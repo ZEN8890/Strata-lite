@@ -316,8 +316,9 @@ class _ItemListScreenState extends State<ItemListScreen> {
       }).toList();
 
       for (var item in itemsToExport) {
+        // PERUBAHAN DI SINI: Sertakan jam, menit, detik dalam format tanggal
         String formattedDate =
-            '${item.createdAt.day.toString().padLeft(2, '0')}-${item.createdAt.month.toString().padLeft(2, '0')}-${item.createdAt.year}';
+            DateFormat('dd-MM-yyyy HH:mm:ss').format(item.createdAt);
         sheetObject.appendRow([
           TextCellValue(item.name),
           TextCellValue(item.barcode),
@@ -689,7 +690,12 @@ class _ItemListScreenState extends State<ItemListScreen> {
                       prefixIcon: const Icon(Icons.search),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(8.0),
+                        borderSide: BorderSide.none, // Remove default border
                       ),
+                      filled: true,
+                      fillColor: Colors.grey[100], // Light fill color
+                      contentPadding: const EdgeInsets.symmetric(
+                          vertical: 10, horizontal: 10),
                     ),
                   ),
                 ),

@@ -1,24 +1,21 @@
 import 'package:flutter/material.dart';
-import 'package:Strata_lite/screens/add_item_screen.dart';
-import 'package:Strata_lite/screens/item_list_screen.dart';
-import 'package:Strata_lite/screens/time_log_screen.dart';
-import 'package:Strata_lite/screens/take_item_screen.dart';
-import 'package:Strata_lite/screens/settings_screen.dart';
-import 'package:Strata_lite/screens/users_screen.dart'; // <--- Import UsersScreen
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'dart:developer';
+import 'package:Strata_lite/screens/take_item_screen.dart'; // Import halaman Ambil Barang
+import 'package:Strata_lite/screens/settings_screen.dart'; // Import halaman Pengaturan
+import 'dart:developer'; // Untuk log.log()
 
-class AdminDashboardScreen extends StatefulWidget {
-  const AdminDashboardScreen({super.key});
+class StaffDashboardScreen extends StatefulWidget {
+  const StaffDashboardScreen({super.key});
 
   @override
-  State<AdminDashboardScreen> createState() => _AdminDashboardScreenState();
+  State<StaffDashboardScreen> createState() => _StaffDashboardScreenState();
 }
 
-class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
-  int _selectedIndex = 0;
+class _StaffDashboardScreenState extends State<StaffDashboardScreen> {
+  int _selectedIndex = 0; // Indeks halaman yang dipilih
 
+  // State untuk data pengguna di DrawerHeader (mirip AdminDashboard)
   String _drawerUserName = 'Memuat Nama...';
   String _drawerUserEmail = 'Memuat Email...';
   String _drawerUserDepartment = 'Memuat Departemen...';
@@ -27,22 +24,19 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
+  // Daftar halaman yang dapat diakses staff
   final List<Widget> _pages = [
-    const ItemListScreen(),
-    const AddItemScreen(),
-    const Center(child: Text('Halaman Impor/Ekspor Data (Segera Hadir!)')),
-    const TimeLogScreen(),
-    const SettingsScreen(),
-    const TakeItemScreen(),
-    const UsersScreen(), // <--- Tambahkan UsersScreen di sini (indeks 6)
+    const TakeItemScreen(), // Indeks 0: Halaman Ambil Barang
+    const SettingsScreen(), // Indeks 1: Halaman Pengaturan
   ];
 
   @override
   void initState() {
     super.initState();
-    _loadDrawerUserData();
+    _loadDrawerUserData(); // Muat data pengguna saat initState
   }
 
+  // Fungsi untuk memuat data pengguna untuk DrawerHeader (disalin dari AdminDashboard)
   Future<void> _loadDrawerUserData() async {
     if (!mounted) return;
     setState(() {
@@ -59,7 +53,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         _drawerUserDepartment = '';
         _isDrawerLoading = false;
       });
-      log('Error: No user logged in for admin dashboard drawer.');
+      log('Error: No user logged in for staff dashboard.');
       return;
     }
 
@@ -109,6 +103,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     });
   }
 
+  // Fungsi untuk menampilkan dialog konfirmasi logout (disalin dari AdminDashboard)
   Future<void> _confirmLogout() async {
     bool? confirm = await showDialog<bool>(
       context: context,
@@ -140,7 +135,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Dashboard Admin Strata Lite'),
+        title: const Text(
+            'Dashboard Staff Strata Lite'), // Judul AppBar untuk staff
         actions: [
           IconButton(
             icon: const Icon(Icons.logout),
@@ -197,44 +193,10 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                     ),
             ),
             ListTile(
-              leading: const Icon(Icons.inventory),
-              title: const Text('Manajemen Barang'),
-              onTap: () {
-                _onItemTapped(0);
-                Navigator.pop(context);
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.add_box),
-              title: const Text('Tambah Barang Baru'),
-              onTap: () {
-                _onItemTapped(1);
-                Navigator.pop(context);
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.history),
-              title: const Text('Log Pengambilan Barang'),
-              onTap: () {
-                _onItemTapped(3);
-                Navigator.pop(context);
-              },
-            ),
-            ListTile(
               leading: const Icon(Icons.shopping_cart),
               title: const Text('Ambil Barang'),
               onTap: () {
-                _onItemTapped(5);
-                Navigator.pop(context);
-              },
-            ),
-            const Divider(),
-            ListTile(
-              leading: const Icon(Icons.group), // <--- Icon untuk halaman Users
-              title: const Text(
-                  'Manajemen Pengguna'), // <--- Nama menu untuk Users
-              onTap: () {
-                _onItemTapped(6); // <--- Indeks 6 untuk UsersScreen
+                _onItemTapped(0); // Indeks 0 untuk TakeItemScreen
                 Navigator.pop(context);
               },
             ),
@@ -242,10 +204,11 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
               leading: const Icon(Icons.settings),
               title: const Text('Pengaturan'),
               onTap: () {
-                _onItemTapped(4);
+                _onItemTapped(1); // Indeks 1 untuk SettingsScreen
                 Navigator.pop(context);
               },
             ),
+            const Divider(),
             ListTile(
               leading: const Icon(Icons.logout),
               title: const Text('Logout'),

@@ -1,61 +1,72 @@
-// File: main.dart
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:Strata_lite/screens/admin_dashboard_screen.dart';
+import 'package:Strata_lite/screens/staff_dashboard_screen.dart'; // <--- Import StaffDashboardScreen
 import 'package:Strata_lite/screens/login_screen.dart';
-import 'package:firebase_core/firebase_core.dart'; // Import Firebase Core
-import 'package:Strata_lite/firebase_options.dart'; // Import file konfigurasi Firebase
-import 'package:firebase_auth/firebase_auth.dart'; // Import FirebaseAuth
+import 'package:firebase_core/firebase_core.dart';
+import 'package:Strata_lite/firebase_options.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart'; // <--- Import Cloud Firestore
 
 void main() async {
-  // Pastikan fungsi main() bersifat async
-  WidgetsFlutterBinding
-      .ensureInitialized(); // Penting: Pastikan Flutter binding sudah diinisialisasi
+  WidgetsFlutterBinding.ensureInitialized();
 
-  // --- INISIALISASI FIREBASE ---
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
-  // --- AKHIR INISIALISASI FIREBASE ---
 
-  // --- LOGIKA UNTUK MEMERIKSA STATUS LOGIN SAAT APLIKASI DIMULAI ---
-  // Dapatkan instance Firebase Auth
   final FirebaseAuth _auth = FirebaseAuth.instance;
-  // Periksa apakah ada pengguna yang sedang login
-  User? currentUser = _auth.currentUser;
+  final FirebaseFirestore _firestore =
+      FirebaseFirestore.instance; // <--- Instance Firestore
 
   String initialRoute;
+  User? currentUser = _auth.currentUser;
+
   if (currentUser != null) {
-    // Jika ada pengguna yang login, langsung arahkan ke dashboard admin
-    // TODO: Di sini Anda juga bisa mengecek peran pengguna dari Firestore
-    // untuk mengarahkan ke dashboard admin atau staff yang sesuai.
-    initialRoute = '/admin_dashboard';
+    // Ambil role pengguna dari Firestore
+    try {
+      DocumentSnapshot userDoc =
+          await _firestore.collection('users').doc(currentUser.uid).get();
+      if (userDoc.exists) {
+        String role = (userDoc.data() as Map<String, dynamic>)['role'] ??
+            'staff'; // Default ke staff jika role tidak ada
+        if (role == 'admin') {
+          initialRoute = '/admin_dashboard';
+        } else {
+          initialRoute = '/staff_dashboard'; // Arahkan ke staff dashboard
+        }
+      } else {
+        // Jika dokumen user tidak ditemukan, perlakukan sebagai staff atau arahkan ke login
+        initialRoute = '/staff_dashboard';
+        print(
+            'Warning: User document not found for UID: ${currentUser.uid}, defaulting to staff dashboard.');
+      }
+    } catch (e) {
+      print('Error fetching user role: $e, defaulting to staff dashboard.');
+      initialRoute =
+          '/staff_dashboard'; // Fallback jika ada error saat mengambil role
+    }
   } else {
-    // Jika tidak ada pengguna yang login, arahkan ke halaman login
     initialRoute = '/';
   }
-  // --- AKHIR LOGIKA STATUS LOGIN ---
 
-  // Menyembunyikan System UI Overlay (Navigation Bar Android)
   SystemChrome.setEnabledSystemUIMode(
-    SystemUiMode
-        .immersiveSticky, // Ini akan menyembunyikan navigation bar dan status bar
-    overlays: [], // Menentukan overlay apa yang harus disembunyikan (mengosongkan berarti semua)
+    SystemUiMode.immersiveSticky,
+    overlays: [],
   ).then((_) {
-    // Opsional: Atur orientasi layar jika diperlukan (misalnya, hanya portrait)
     SystemChrome.setPreferredOrientations([
       DeviceOrientation.portraitUp,
       DeviceOrientation.portraitDown,
     ]).then((_) {
-      runApp(MyApp(initialRoute: initialRoute)); // Kirim initialRoute ke MyApp
+      runApp(MyApp(initialRoute: initialRoute));
     });
   });
 }
 
 class MyApp extends StatelessWidget {
-  final String initialRoute; // Tambahkan properti initialRoute
+  final String initialRoute;
 
-  const MyApp({super.key, required this.initialRoute}); // Perbarui konstruktor
+  const MyApp({super.key, required this.initialRoute});
 
   @override
   Widget build(BuildContext context) {
@@ -65,11 +76,12 @@ class MyApp extends StatelessWidget {
         primarySwatch: Colors.blue,
         visualDensity: VisualDensity.adaptivePlatformDensity,
       ),
-      initialRoute: initialRoute, // Gunakan initialRoute yang ditentukan
+      initialRoute: initialRoute,
       routes: {
         '/': (context) => const LoginScreen(),
         '/admin_dashboard': (context) => const AdminDashboardScreen(),
-        // TODO: Tambahkan rute untuk halaman staff, jika ada
+        '/staff_dashboard': (context) =>
+            const StaffDashboardScreen(), // <--- Tambahkan rute ini
       },
       debugShowCheckedModeBanner: false,
     );
