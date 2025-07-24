@@ -4,6 +4,13 @@ import 'dart:developer'; // Untuk log.log()
 import 'package:another_flushbar/flushbar.dart'; // Untuk notifikasi
 import 'dart:async'; // Untuk Timer
 import 'package:firebase_auth/firebase_auth.dart'; // Untuk membuat/mengupdate user Firebase Auth
+import 'package:cloud_functions/cloud_functions.dart'; // IMPORT YANG BENAR UNTUK CLOUD FUNCTIONS
+import 'package:file_picker/file_picker.dart'; // Untuk memilih file
+import 'package:excel/excel.dart'; // Untuk membaca/menulis file Excel
+import 'dart:io'; // Untuk File
+import 'package:path_provider/path_provider.dart'
+    as path_provider; // Menggunakan alias
+import 'dart:typed_data'; // Tambahkan ini untuk Uint8List
 
 class UsersScreen extends StatefulWidget {
   const UsersScreen({super.key});
@@ -15,6 +22,10 @@ class UsersScreen extends StatefulWidget {
 class _UsersScreenState extends State<UsersScreen> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
+  // Jika Anda tidak akan menggunakan Cloud Functions sama sekali, Anda bisa hapus baris ini
+  // final FirebaseFunctions _functions = FirebaseFunctions.instance;
+  late final FirebaseFunctions _functions; // Inisialisasi Firebase Functions
+
   TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
 
@@ -35,6 +46,7 @@ class _UsersScreenState extends State<UsersScreen> {
   @override
   void initState() {
     super.initState();
+    _functions = FirebaseFunctions.instance; // Inisialisasi di initState
     _searchController.addListener(_onSearchChanged);
   }
 
@@ -277,6 +289,8 @@ class _UsersScreenState extends State<UsersScreen> {
                         'Pengguna ${nameController.text} berhasil diperbarui.',
                         isError: false);
                   } else {
+                    // KINI MENGGUNAKAN FIREBASE AUTH LANGSUNG UNTUK PEMBUATAN PENGGUNA BARU
+                    // AKIBATNYA: Sesi admin akan tertimpa.
                     try {
                       UserCredential userCredential =
                           await _auth.createUserWithEmailAndPassword(
@@ -295,11 +309,17 @@ class _UsersScreenState extends State<UsersScreen> {
                         'createdAt': FieldValue.serverTimestamp(),
                       });
                       _showNotification('Akun Berhasil Dibuat!',
-                          'Pengguna ${nameController.text} (${emailController.text}) berhasil ditambahkan.',
+                          'Pengguna ${nameController.text} (${userCredential.user!.email}) berhasil ditambahkan. Anda sekarang login sebagai pengguna baru ini.',
                           isError: false);
 
-                      // BARIS _auth.signOut() DI SINI TELAH DIHAPUS
-                      // Ini mencegah admin logout secara tidak sengaja.
+                      // Opsional: Untuk mengembalikan sesi admin secara otomatis (setelah import selesai)
+                      // Anda perlu meminta password admin lagi atau membuat mekanisme re-autentikasi.
+                      // Karena ini kompleks dan berpotensi tidak aman jika disimpan,
+                      // disarankan untuk memberi tahu admin untuk login ulang.
+                      // Untuk satu pengguna, kita bisa biarkan admin terus login sebagai pengguna baru,
+                      // tetapi untuk impor massal, ini adalah masalah.
+                      // Anda bisa mengarahkan admin ke layar login setelah semua impor selesai.
+                      // Contoh: Navigator.pushReplacementNamed(context, '/login');
                     } on FirebaseAuthException catch (e) {
                       String message;
                       if (e.code == 'email-already-in-use') {
@@ -311,38 +331,21 @@ class _UsersScreenState extends State<UsersScreen> {
                       }
                       _showNotification('Gagal!', message, isError: true);
                       return;
+                    } catch (e) {
+                      _showNotification('Error', 'Terjadi kesalahan umum: $e',
+                          isError: true);
+                      log('Error creating user (client-side): $e');
+                      return;
                     }
                   }
-                  // Tutup dialog hanya setelah notifikasi ditampilkan dan operasi Auth selesai
-                  // Menggunakan then() pada show() dari Flushbar
+                  // Tutup dialog setelah notifikasi ditampilkan dan operasi Auth selesai
                   if (dialogContext.mounted) {
-                    // Tampilkan notifikasi terlebih dahulu
-                    Flushbar(
-                      title: isEditing
-                          ? 'Berhasil Diperbarui!'
-                          : 'Akun Berhasil Dibuat!',
-                      message: isEditing
-                          ? 'Pengguna ${nameController.text} berhasil diperbarui.'
-                          : 'Pengguna ${nameController.text} (${emailController.text}) berhasil ditambahkan.',
-                      icon: const Icon(Icons.check_circle_outline,
-                          color: Colors.green),
-                      duration: const Duration(seconds: 3),
-                      flushbarPosition: FlushbarPosition.TOP,
-                      flushbarStyle: FlushbarStyle.FLOATING,
-                      backgroundColor: Colors.green[100]!,
-                      margin: const EdgeInsets.all(8),
-                      borderRadius: BorderRadius.circular(8),
-                    ).show(dialogContext).then((_) {
-                      // Tutup dialog setelah Flushbar selesai
-                      if (dialogContext.mounted) {
-                        Navigator.of(dialogContext).pop();
-                      }
-                    });
+                    Navigator.of(dialogContext).pop();
                   }
                 } catch (e) {
                   _showNotification('Error', 'Terjadi kesalahan: $e',
                       isError: true);
-                  log('Error adding/editing user: $e');
+                  log('Error in add/edit user flow: $e');
                 }
               }
             },
@@ -355,51 +358,369 @@ class _UsersScreenState extends State<UsersScreen> {
 
   // Fungsi untuk menghapus pengguna
   Future<void> _deleteUser(String userId, String userName) async {
-    bool? confirm = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Konfirmasi Hapus Pengguna'),
-        content: Text(
-            'Apakah Anda yakin ingin menghapus pengguna "$userName"? Ini akan menghapus data profil dari database. Akun login Firebase Authentication mungkin perlu dihapus secara manual dari Firebase Console atau melalui Cloud Function untuk keamanan yang lengkap.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Batal'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-            child: const Text('Hapus', style: TextStyle(color: Colors.white)),
-          ),
-        ],
-      ),
-    );
+    // PENTING: Untuk penghapusan akun Auth otomatis di sisi server (saat dokumen Firestore dihapus),
+    // Anda masih memerlukan Cloud Function 'deleteUserAuthOnProfileDelete' yang di-deploy.
+    // Jika tidak di-deploy, hanya dokumen Firestore yang akan terhapus, bukan akun Auth.
+    try {
+      final confirm = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('Konfirmasi Hapus'),
+          content:
+              Text('Apakah Anda yakin ingin menghapus pengguna $userName?'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('Batal'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: const Text('Hapus'),
+            ),
+          ],
+        ),
+      );
 
-    if (confirm == true) {
-      try {
-        // Hapus dokumen pengguna dari Firestore
+      if (confirm == true) {
         await _firestore.collection('users').doc(userId).delete();
-
-        // PENTING: Menghapus akun dari Firebase Authentication (Auth)
-        // tidak bisa dilakukan langsung dari client-side Flutter untuk user lain
-        // karena alasan keamanan. Anda membutuhkan:
-        // 1. Cloud Functions: Untuk menghapus user dari Auth setelah dokumennya dihapus dari Firestore.
-        //    (Disarankan: Trigger on delete Firestore document)
-        // 2. Admin SDK di backend Anda: Jika Anda memiliki server sendiri.
-        //
-        // Jika tidak diimplementasikan, akun Auth akan tetap ada meskipun dokumen profilnya hilang.
-        // Ini adalah BUG SECURITY/DATA INCONSISTENCY jika tidak ditangani di backend.
-        log('Attempted to delete user document from Firestore: $userId');
-        _showNotification('Berhasil Dihapus',
-            'Data profil pengguna "$userName" berhasil dihapus dari database. Akun login Firebase Authentication mungkin masih aktif.',
+        _showNotification('Berhasil!', 'Pengguna $userName berhasil dihapus.',
             isError: false);
-      } catch (e) {
-        _showNotification('Gagal Menghapus',
-            'Gagal menghapus pengguna "$userName": $e. Pastikan Anda memiliki izin yang cukup.',
-            isError: true);
-        log('Error deleting user: $e');
       }
+    } catch (e) {
+      _showNotification('Gagal!', 'Terjadi kesalahan saat menghapus pengguna.',
+          isError: true);
+      log('Error deleting user: $e');
     }
+  }
+
+  // Fungsi untuk Export Pengguna ke Excel
+  Future<void> _exportUsersToExcel() async {
+    try {
+      // 1. Ambil semua data pengguna dari Firestore
+      final querySnapshot = await _firestore.collection('users').get();
+      final usersData = querySnapshot.docs;
+
+      if (usersData.isEmpty) {
+        _showNotification('Info', 'Tidak ada pengguna untuk diekspor.',
+            isError: false);
+        return;
+      }
+
+      // 2. Buat objek Excel baru dan ganti nama sheet bawaan
+      final excel = Excel.createExcel();
+      final defaultSheetName =
+          excel.getDefaultSheet()!; // Get default sheet name (e.g., 'Sheet1')
+      excel.rename(defaultSheetName, 'Daftar Pengguna'); // Rename it
+      final sheet = excel['Daftar Pengguna']; // Access the renamed sheet
+
+      // 3. Tambahkan header
+      List<String> headers = [
+        'Nama Lengkap',
+        'Email',
+        'Nomor Telepon',
+        'Departemen',
+        'Role'
+      ];
+      sheet.insertRowIterables(
+          headers.map((e) => TextCellValue(e)).toList(), 0);
+
+      // 4. Tambahkan data pengguna
+      for (int i = 0; i < usersData.length; i++) {
+        final userData = usersData[i].data();
+        String phoneNumber = userData['phoneNumber']?.toString() ?? '';
+        // Prepend with single quote to force Excel to treat it as text and preserve leading zeros
+        if (phoneNumber.startsWith('0')) {
+          phoneNumber = "'" + phoneNumber;
+        }
+
+        List<dynamic> row = [
+          userData['name'] ?? '',
+          userData['email'] ?? '',
+          phoneNumber, // Use the formatted phone number
+          userData['department'] ?? '',
+          userData['role'] ?? '',
+        ];
+        sheet.insertRowIterables(
+            row.map((e) => TextCellValue(e.toString())).toList(), i + 1);
+      }
+
+      // 5. Simpan file Excel
+      final directory = await path_provider
+          .getTemporaryDirectory(); // Use path_provider alias
+      final filePath = '${directory.path}/Daftar_Pengguna_Strata.xlsx';
+      final file = File(filePath);
+
+      final excelBytes = excel.encode()!;
+      await file.writeAsBytes(Uint8List.fromList(excelBytes));
+
+      // 6. Bagikan atau simpan file
+      final result = await FilePicker.platform.saveFile(
+        fileName: 'Daftar_Pengguna_Strata.xlsx',
+        type: FileType.custom,
+        allowedExtensions: ['xlsx'],
+        bytes: Uint8List.fromList(excelBytes),
+      );
+
+      if (result != null) {
+        _showNotification('Berhasil!',
+            'Daftar pengguna berhasil diekspor ke Excel di: $result',
+            isError: false); // Added path
+      } else {
+        _showNotification('Info', 'Ekspor dibatalkan atau file tidak disimpan.',
+            isError: false);
+      }
+    } catch (e) {
+      _showNotification(
+          'Gagal Export', 'Terjadi kesalahan saat mengekspor data: $e',
+          isError: true);
+      log('Error exporting users: $e');
+    }
+  }
+
+  // Fungsi untuk Import Pengguna dari Excel
+  Future<void> _importUsersFromExcel() async {
+    try {
+      // 1. Pilih file Excel
+      FilePickerResult? result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['xlsx'],
+      );
+
+      if (result == null || result.files.single.path == null) {
+        _showNotification('Info', 'Tidak ada file yang dipilih untuk diimpor.',
+            isError: false);
+        return;
+      }
+
+      File file = File(result.files.single.path!);
+      var bytes = file.readAsBytesSync();
+      var excel = Excel.decodeBytes(bytes);
+
+      int importedCount = 0;
+      int failedCount = 0;
+
+      // Asumsi sheet pertama adalah yang relevan
+      for (var table in excel.tables.keys) {
+        var sheet = excel.tables[table];
+        if (sheet == null || sheet.rows.isEmpty) continue;
+
+        // Asumsi baris pertama adalah header
+        // Header: 'Nama Lengkap', 'Email', 'Nomor Telepon', 'Departemen', 'Role', 'Password'
+        // Untuk tujuan demonstrasi dan keamanan, password HARUS DISEDIAKAN.
+        // Jika tidak, Anda harus mengatur password default atau mengharuskan reset password.
+        final headerRow = sheet.rows.first
+            .map((cell) => cell?.value?.toString().trim())
+            .toList();
+
+        // Temukan indeks kolom
+        final nameIndex = headerRow.indexOf('Nama Lengkap');
+        final emailIndex = headerRow.indexOf('Email');
+        final phoneIndex = headerRow.indexOf('Nomor Telepon');
+        final departmentIndex = headerRow.indexOf('Departemen');
+        final roleIndex = headerRow.indexOf('Role');
+        final passwordIndex =
+            headerRow.indexOf('Password'); // Kolom password dari import
+
+        if (nameIndex == -1 ||
+            emailIndex == -1 ||
+            departmentIndex == -1 ||
+            roleIndex == -1 ||
+            passwordIndex == -1) {
+          _showNotification('Gagal Import',
+              'File Excel tidak memiliki semua kolom yang diperlukan (Nama Lengkap, Email, Nomor Telepon, Departemen, Role, Password).',
+              isError: true);
+          return;
+        }
+
+        for (int i = 1; i < sheet.rows.length; i++) {
+          // Mulai dari baris kedua (setelah header)
+          final row = sheet.rows[i];
+          final String name = (row[nameIndex]?.value?.toString().trim() ?? '');
+          final String email =
+              (row[emailIndex]?.value?.toString().trim() ?? '');
+          final String phoneNumber =
+              (row[phoneIndex]?.value?.toString().trim() ?? '');
+          final String department =
+              (row[departmentIndex]?.value?.toString().trim() ?? '');
+          String role = (row[roleIndex]?.value?.toString().trim() ?? 'staff')
+              .toLowerCase(); // Default 'staff'
+          final String password =
+              (row[passwordIndex]?.value?.toString().trim() ?? '');
+
+          // Validasi dasar
+          if (name.isEmpty || email.isEmpty || password.isEmpty) {
+            log('Skipping row $i: Nama, Email, atau Password kosong.');
+            failedCount++;
+            continue;
+          }
+          if (!email.contains('@') || !email.contains('.')) {
+            log('Skipping row $i: Format email tidak valid.');
+            failedCount++;
+            continue;
+          }
+          if (password.length < 6) {
+            log('Skipping row $i: Password kurang dari 6 karakter.');
+            failedCount++;
+            continue;
+          }
+
+          // Pastikan role valid
+          if (!_roles.contains(role)) {
+            role = 'staff'; // Set default 'staff' jika role tidak valid
+          }
+          if (!_departments.contains(department)) {
+            log('Skipping row $i: Departemen tidak valid.');
+            failedCount++;
+            continue;
+          }
+
+          try {
+            // Panggil Firebase Auth langsung untuk membuat pengguna
+            UserCredential userCredential =
+                await _auth.createUserWithEmailAndPassword(
+              email: email,
+              password: password,
+            );
+            await _firestore
+                .collection('users')
+                .doc(userCredential.user!.uid)
+                .set({
+              'name': name,
+              'email': email,
+              'phoneNumber': phoneNumber,
+              'department': department,
+              'role': role,
+              'createdAt': FieldValue.serverTimestamp(),
+            });
+            importedCount++;
+          } on FirebaseAuthException catch (e) {
+            log('Gagal mengimpor ${email} (Auth Error): ${e.message}');
+            failedCount++;
+          } catch (e) {
+            log('Gagal mengimpor ${email} (General Error): $e');
+            failedCount++;
+          }
+        }
+      }
+
+      String importSummaryMessage =
+          '${importedCount} pengguna berhasil diimpor. ${failedCount} pengguna gagal diimpor.';
+      if (importedCount > 0) {
+        importSummaryMessage +=
+            ' Sesi admin mungkin telah berubah. Mohon login ulang sebagai admin.';
+        // Opsional: Langsung arahkan ke layar login
+        // if (mounted) Navigator.pushReplacementNamed(context, '/login');
+      }
+
+      _showNotification(
+        'Impor Selesai!',
+        importSummaryMessage,
+        isError: failedCount > 0,
+      );
+    } catch (e) {
+      _showNotification(
+          'Gagal Import', 'Terjadi kesalahan saat mengimpor file Excel: $e',
+          isError: true);
+      log('Error importing users: $e');
+    }
+  }
+
+  // Fungsi untuk Download Template Import Excel
+  Future<void> _downloadImportTemplate() async {
+    try {
+      final excel = Excel.createExcel();
+      // Menghapus sheet bawaan (biasanya 'Sheet1')
+      final defaultSheetName =
+          excel.getDefaultSheet()!; // Get default sheet name
+      excel.rename(defaultSheetName, 'Template Import Pengguna'); // Rename it
+      final sheet =
+          excel['Template Import Pengguna']; // Access the renamed sheet
+
+      List<String> headers = [
+        'Nama Lengkap',
+        'Email',
+        'Nomor Telepon',
+        'Departemen',
+        'Role',
+        'Password'
+      ];
+      sheet.insertRowIterables(
+          headers.map((e) => TextCellValue(e)).toList(), 0);
+
+      // Anda bisa menambahkan beberapa baris contoh data jika diinginkan
+      // List<String> exampleRow = ['John Doe', 'john.doe@example.com', '1234567890', 'IT', 'staff', 'password123'];
+      // sheet.insertRowIterables(exampleRow.map((e) => TextCellValue(e)).toList(), 1);
+
+      final directory = await path_provider
+          .getTemporaryDirectory(); // Use path_provider alias
+      final filePath = '${directory.path}/Template_Import_Pengguna_Strata.xlsx';
+      final file = File(filePath);
+
+      final excelBytes = excel.encode()!;
+      await file.writeAsBytes(Uint8List.fromList(excelBytes));
+
+      final result = await FilePicker.platform.saveFile(
+        fileName: 'Template_Import_Pengguna_Strata.xlsx',
+        type: FileType.custom,
+        allowedExtensions: ['xlsx'],
+        bytes: Uint8List.fromList(excelBytes),
+      );
+
+      if (result != null) {
+        _showNotification(
+            'Berhasil!', 'Template impor Excel berhasil diunduh ke: $result',
+            isError: false); // Added path
+      } else {
+        _showNotification(
+            'Info', 'Pengunduhan template dibatalkan atau file tidak disimpan.',
+            isError: false);
+      }
+    } catch (e) {
+      _showNotification('Gagal Download Template',
+          'Terjadi kesalahan saat mengunduh template: $e',
+          isError: true);
+      log('Error downloading template: $e');
+    }
+  }
+
+  // Fungsi untuk menampilkan BottomSheet dengan opsi Import/Export
+  void _showImportExportOptions() {
+    showModalBottomSheet(
+      context: context,
+      builder: (BuildContext bc) {
+        return SafeArea(
+          child: Wrap(
+            children: <Widget>[
+              ListTile(
+                leading: const Icon(Icons.download),
+                title: const Text('Export Pengguna ke Excel'),
+                onTap: () {
+                  Navigator.pop(bc); // Tutup bottom sheet
+                  _exportUsersToExcel();
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.upload),
+                title: const Text('Import Pengguna dari Excel'),
+                onTap: () {
+                  Navigator.pop(bc); // Tutup bottom sheet
+                  _importUsersFromExcel();
+                },
+              ),
+              ListTile(
+                // Tombol baru untuk download template
+                leading: const Icon(Icons.file_download),
+                title: const Text('Download Template Import Excel'),
+                onTap: () {
+                  Navigator.pop(bc); // Tutup bottom sheet
+                  _downloadImportTemplate();
+                },
+              ),
+            ],
+          ),
+        );
+      },
+    );
   }
 
   @override
@@ -448,6 +769,7 @@ class _UsersScreenState extends State<UsersScreen> {
                 ),
               ),
               const SizedBox(width: 10),
+              // Tombol "Tambah Pengguna"
               ElevatedButton.icon(
                 onPressed: () => _addEditUser(),
                 icon: const Icon(Icons.person_add),
@@ -458,6 +780,13 @@ class _UsersScreenState extends State<UsersScreen> {
                   shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(8)),
                 ),
+              ),
+              const SizedBox(width: 10), // Spasi antara tombol
+              // Tombol untuk opsi Import/Export
+              IconButton(
+                icon: const Icon(Icons.more_vert),
+                onPressed: _showImportExportOptions,
+                tooltip: 'Opsi Import/Export',
               ),
             ],
           ),
