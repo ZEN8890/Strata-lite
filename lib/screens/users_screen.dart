@@ -298,13 +298,8 @@ class _UsersScreenState extends State<UsersScreen> {
                           'Pengguna ${nameController.text} (${emailController.text}) berhasil ditambahkan.',
                           isError: false);
 
-                      // PERBAIKAN DI SINI: Sign out the newly created user immediately
-                      // This prevents the app from automatically logging in as this new user on next launch.
-                      // Pastikan ada pengguna yang login sebelum mencoba sign out
-                      if (_auth.currentUser != null) {
-                        await _auth.signOut();
-                        log('Newly created user signed out to prevent auto-login on next launch.');
-                      }
+                      // BARIS _auth.signOut() DI SINI TELAH DIHAPUS
+                      // Ini mencegah admin logout secara tidak sengaja.
                     } on FirebaseAuthException catch (e) {
                       String message;
                       if (e.code == 'email-already-in-use') {
@@ -318,7 +313,7 @@ class _UsersScreenState extends State<UsersScreen> {
                       return;
                     }
                   }
-                  // PERBAIKAN DI SINI: Tutup dialog hanya setelah notifikasi ditampilkan dan operasi Auth selesai
+                  // Tutup dialog hanya setelah notifikasi ditampilkan dan operasi Auth selesai
                   // Menggunakan then() pada show() dari Flushbar
                   if (dialogContext.mounted) {
                     // Tampilkan notifikasi terlebih dahulu

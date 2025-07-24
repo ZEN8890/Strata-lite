@@ -84,7 +84,7 @@ class _LoginScreenState extends State<LoginScreen> {
               'Login Berhasil sebagai Pengguna Biasa (Staff): ${user.email}!');
           if (!context.mounted) return;
           Navigator.pushReplacementNamed(context,
-              '/admin_dashboard'); // Sementara arahkan ke admin dashboard
+              '/staff_dashboard'); // Correctly redirect to staff dashboard
         }
       } else {
         _showMessage('Login Gagal: Pengguna tidak ditemukan.');
