@@ -22,8 +22,6 @@ class UsersScreen extends StatefulWidget {
 class _UsersScreenState extends State<UsersScreen> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
-  // Jika Anda tidak akan menggunakan Cloud Functions sama sekali, Anda bisa hapus baris ini
-  // final FirebaseFunctions _functions = FirebaseFunctions.instance;
   late final FirebaseFunctions _functions; // Inisialisasi Firebase Functions
 
   TextEditingController _searchController = TextEditingController();
@@ -444,31 +442,32 @@ class _UsersScreenState extends State<UsersScreen> {
             row.map((e) => TextCellValue(e.toString())).toList(), i + 1);
       }
 
-      // 5. Simpan file Excel
-      final directory = await path_provider
-          .getTemporaryDirectory(); // Use path_provider alias
-      final filePath = '${directory.path}/Daftar_Pengguna_Strata.xlsx';
-      final file = File(filePath);
-
       final excelBytes = excel.encode()!;
-      await file.writeAsBytes(Uint8List.fromList(excelBytes));
 
-      // 6. Bagikan atau simpan file
-      final result = await FilePicker.platform.saveFile(
+      // --- START CHANGES HERE ---
+      // Instead of writing to a temporary file and then using bytes in saveFile,
+      // directly get the path from the user and then write the bytes.
+      final String? resultPath = await FilePicker.platform.saveFile(
         fileName: 'Daftar_Pengguna_Strata.xlsx',
         type: FileType.custom,
         allowedExtensions: ['xlsx'],
-        bytes: Uint8List.fromList(excelBytes),
+        // Do NOT pass bytes here, we will write them manually
       );
 
-      if (result != null) {
+      if (!context.mounted) return; // Ensure widget is still mounted
+
+      if (resultPath != null) {
+        final File file = File(resultPath);
+        await file.writeAsBytes(Uint8List.fromList(excelBytes));
         _showNotification('Berhasil!',
-            'Daftar pengguna berhasil diekspor ke Excel di: $result',
-            isError: false); // Added path
+            'Daftar pengguna berhasil diekspor ke Excel di: $resultPath',
+            isError: false);
+        log('File Excel berhasil diekspor ke: $resultPath');
       } else {
         _showNotification('Info', 'Ekspor dibatalkan atau file tidak disimpan.',
             isError: false);
       }
+      // --- END CHANGES HERE ---
     } catch (e) {
       _showNotification(
           'Gagal Export', 'Terjadi kesalahan saat mengekspor data: $e',
@@ -651,30 +650,31 @@ class _UsersScreenState extends State<UsersScreen> {
       // List<String> exampleRow = ['John Doe', 'john.doe@example.com', '1234567890', 'IT', 'staff', 'password123'];
       // sheet.insertRowIterables(exampleRow.map((e) => TextCellValue(e)).toList(), 1);
 
-      final directory = await path_provider
-          .getTemporaryDirectory(); // Use path_provider alias
-      final filePath = '${directory.path}/Template_Import_Pengguna_Strata.xlsx';
-      final file = File(filePath);
-
       final excelBytes = excel.encode()!;
-      await file.writeAsBytes(Uint8List.fromList(excelBytes));
 
-      final result = await FilePicker.platform.saveFile(
+      // --- START CHANGES HERE ---
+      final String? resultPath = await FilePicker.platform.saveFile(
         fileName: 'Template_Import_Pengguna_Strata.xlsx',
         type: FileType.custom,
         allowedExtensions: ['xlsx'],
-        bytes: Uint8List.fromList(excelBytes),
+        // Do NOT pass bytes here, we will write them manually
       );
 
-      if (result != null) {
-        _showNotification(
-            'Berhasil!', 'Template impor Excel berhasil diunduh ke: $result',
-            isError: false); // Added path
+      if (!context.mounted) return;
+
+      if (resultPath != null) {
+        final File file = File(resultPath);
+        await file.writeAsBytes(Uint8List.fromList(excelBytes));
+        _showNotification('Berhasil!',
+            'Template impor Excel berhasil diunduh ke: $resultPath',
+            isError: false);
+        log('File template berhasil diunduh ke: $resultPath');
       } else {
         _showNotification(
             'Info', 'Pengunduhan template dibatalkan atau file tidak disimpan.',
             isError: false);
       }
+      // --- END CHANGES HERE ---
     } catch (e) {
       _showNotification('Gagal Download Template',
           'Terjadi kesalahan saat mengunduh template: $e',
