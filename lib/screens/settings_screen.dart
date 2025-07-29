@@ -34,12 +34,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
   // Contoh daftar departemen (bisa diambil dari Firestore juga di masa depan)
   final List<String> _departments = [
     'Marketing',
+    'Sales', // New
     'HRD',
-    'Keamanan',
-    'Keuangan',
-    'Umum',
-    'IT',
-    'Logistik'
+    'Finance', // New
+    'FO', // New
+    'FBS', // New
+    'FBP', // New
+    'HK', // New
+    'Engineering', // New
+    'Security', // New
+    'IT'
   ];
 
   @override
