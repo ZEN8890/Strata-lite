@@ -9,6 +9,9 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'dart:developer';
 
+// Import the LoginScreen to navigate to it correctly
+import 'package:Strata_lite/screens/login_screen.dart';
+
 class AdminDashboardScreen extends StatefulWidget {
   const AdminDashboardScreen({super.key});
 
@@ -130,9 +133,18 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     );
 
     if (confirm == true) {
+      // Perform Firebase logout
       await FirebaseAuth.instance.signOut();
       if (!context.mounted) return;
-      Navigator.pushReplacementNamed(context, '/');
+
+      // Navigate to LoginScreen and remove all previous routes from the stack
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (context) => const LoginScreen()),
+        (Route<dynamic> route) =>
+            false, // This predicate ensures all routes are removed
+      );
+      // Optional: show a notification if desired
+      // _showNotification('Logout Berhasil', 'Anda telah berhasil keluar.', isError: false);
     }
   }
 
@@ -141,6 +153,9 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Dashboard Admin Strata Lite'),
+        // --- START CHANGES HERE ---
+        // Hapus atau komentari bagian 'actions' berikut ini
+        /*
         actions: [
           IconButton(
             icon: const Icon(Icons.logout),
@@ -148,6 +163,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
             onPressed: _confirmLogout,
           ),
         ],
+        */
+        // --- END CHANGES HERE ---
       ),
       drawer: Drawer(
         child: ListView(

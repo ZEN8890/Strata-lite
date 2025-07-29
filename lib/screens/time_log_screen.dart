@@ -11,6 +11,7 @@ import 'dart:io';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/foundation.dart';
+import 'package:file_picker/file_picker.dart'; // Pastikan ini diimpor
 
 class TimeLogScreen extends StatefulWidget {
   const TimeLogScreen({super.key});
@@ -332,82 +333,83 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
     );
   }
 
-  Future<String?> _getExportPath(BuildContext context) async {
-    String fileName =
-        'Log_Pengambilan_Strata_Lite_${DateTime.now().millisecondsSinceEpoch}.xlsx';
+  // --- THIS FUNCTION WILL NO LONGER BE USED DIRECTLY FOR EXPORT PATH ---
+  // Future<String?> _getExportPath(BuildContext context) async {
+  //   String fileName =
+  //       'Log_Pengambilan_Strata_Lite_${DateTime.now().millisecondsSinceEpoch}.xlsx';
 
-    if (defaultTargetPlatform == TargetPlatform.android) {
-      try {
-        Directory? downloadsDirectory = await getDownloadsDirectory();
-        if (downloadsDirectory != null) {
-          String publicDownloadPath = '${downloadsDirectory.path}/$fileName';
-          log('Attempting to export to public Downloads (Android via getDownloadsDirectory): $publicDownloadPath');
-          return publicDownloadPath;
-        } else {
-          log('getDownloadsDirectory returned null. Falling back to hardcoded public Downloads path.');
-          String publicDownloadRoot = '/storage/emulated/0/Download';
-          Directory publicDownloadDir = Directory(publicDownloadRoot);
+  //   if (defaultTargetPlatform == TargetPlatform.android) {
+  //     try {
+  //       Directory? downloadsDirectory = await getDownloadsDirectory();
+  //       if (downloadsDirectory != null) {
+  //         String publicDownloadPath = '${downloadsDirectory.path}/$fileName';
+  //         log('Attempting to export to public Downloads (Android via getDownloadsDirectory): $publicDownloadPath');
+  //         return publicDownloadPath;
+  //       } else {
+  //         log('getDownloadsDirectory returned null. Falling back to hardcoded public Downloads path.');
+  //         String publicDownloadRoot = '/storage/emulated/0/Download';
+  //         Directory publicDownloadDir = Directory(publicDownloadRoot);
 
-          if (!await publicDownloadDir.exists()) {
-            await publicDownloadDir.create(recursive: true);
-          }
+  //         if (!await publicDownloadDir.exists()) {
+  //           await publicDownloadDir.create(recursive: true);
+  //         }
 
-          String publicDownloadPath = '${publicDownloadDir.path}/$fileName';
-          log('Attempting to export to explicit public Downloads (Android): $publicDownloadPath');
-          return publicDownloadPath;
-        }
-      } catch (e) {
-        log('Error accessing public Downloads (Android): $e');
-        _showNotification('Akses Downloads Gagal',
-            'Gagal mengakses folder Downloads publik. Mencoba folder internal.',
-            isError: true);
-      }
+  //         String publicDownloadPath = '${publicDownloadDir.path}/$fileName';
+  //         log('Attempting to export to explicit public Downloads (Android): $publicDownloadPath');
+  //         return publicDownloadPath;
+  //       }
+  //     } catch (e) {
+  //       log('Error accessing public Downloads (Android): $e');
+  //       _showNotification('Akses Downloads Gagal',
+  //           'Gagal mengakses folder Downloads publik. Mencoba folder internal.',
+  //           isError: true);
+  //     }
 
-      Directory? appSpecificDir = await getApplicationDocumentsDirectory();
-      if (appSpecificDir != null) {
-        String appSpecificPath = '${appSpecificDir.path}/$fileName';
-        log('Falling back to app-specific directory: $appSpecificPath');
-        _showNotification('Ekspor Internal',
-            'Mengekspor ke folder internal aplikasi karena akses Downloads publik gagal total.',
-            isError: false);
-        return appSpecificPath;
-      }
+  //     Directory? appSpecificDir = await getApplicationDocumentsDirectory();
+  //     if (appSpecificDir != null) {
+  //       String appSpecificPath = '${appSpecificDir.path}/$fileName';
+  //       log('Falling back to app-specific directory: $appSpecificPath');
+  //       _showNotification('Ekspor Internal',
+  //           'Mengekspor ke folder internal aplikasi karena akses Downloads publik gagal total.',
+  //           isError: false);
+  //       return appSpecificPath;
+  //     }
 
-      _showNotification('Direktori Tidak Ditemukan',
-          'Tidak dapat menemukan direktori penyimpanan yang cocok untuk ekspor di Android.',
-          isError: true);
-      return null;
-    } else if (defaultTargetPlatform == TargetPlatform.windows ||
-        defaultTargetPlatform == TargetPlatform.macOS ||
-        defaultTargetPlatform == TargetPlatform.linux) {
-      Directory? downloadsDirectory = await getDownloadsDirectory();
-      if (downloadsDirectory != null) {
-        String desktopDownloadPath = '${downloadsDirectory.path}/$fileName';
-        log('Attempting to export to desktop Downloads: $desktopDownloadPath');
-        return desktopDownloadPath;
-      }
-      _showNotification('Direktori Tidak Ditemukan',
-          'Tidak dapat menemukan direktori Downloads di desktop.',
-          isError: true);
-      return null;
-    } else if (defaultTargetPlatform == TargetPlatform.iOS) {
-      Directory? downloadsDirectory = await getDownloadsDirectory();
-      if (downloadsDirectory != null) {
-        String iOSDownloadPath = '${downloadsDirectory.path}/$fileName';
-        log('Attempting to export to iOS app files directory: $iOSDownloadPath');
-        return iOSDownloadPath;
-      }
-      _showNotification('Direktori Tidak Ditemukan',
-          'Tidak dapat menemukan direktori penyimpanan di iOS.',
-          isError: true);
-      return null;
-    }
+  //     _showNotification('Direktori Tidak Ditemukan',
+  //         'Tidak dapat menemukan direktori penyimpanan yang cocok untuk ekspor di Android.',
+  //         isError: true);
+  //     return null;
+  //   } else if (defaultTargetPlatform == TargetPlatform.windows ||
+  //       defaultTargetPlatform == TargetPlatform.macOS ||
+  //       defaultTargetPlatform == TargetPlatform.linux) {
+  //     Directory? downloadsDirectory = await getDownloadsDirectory();
+  //     if (downloadsDirectory != null) {
+  //       String desktopDownloadPath = '${downloadsDirectory.path}/$fileName';
+  //       log('Attempting to export to desktop Downloads: $desktopDownloadPath');
+  //       return desktopDownloadPath;
+  //     }
+  //     _showNotification('Direktori Tidak Ditemukan',
+  //         'Tidak dapat menemukan direktori Downloads di desktop.',
+  //         isError: true);
+  //     return null;
+  //   } else if (defaultTargetPlatform == TargetPlatform.iOS) {
+  //     Directory? downloadsDirectory = await getDownloadsDirectory();
+  //     if (downloadsDirectory != null) {
+  //       String iOSDownloadPath = '${downloadsDirectory.path}/$fileName';
+  //       log('Attempting to export to iOS app files directory: $iOSDownloadPath');
+  //       return iOSDownloadPath;
+  //     }
+  //     _showNotification('Direktori Tidak Ditemukan',
+  //         'Tidak dapat menemukan direktori penyimpanan di iOS.',
+  //         isError: true);
+  //     return null;
+  //   }
 
-    _showNotification('Platform Tidak Didukung',
-        'Platform ini tidak didukung untuk operasi file.',
-        isError: true);
-    return null;
-  }
+  //   _showNotification('Platform Tidak Didukung',
+  //       'Platform ini tidak didukung untuk operasi file.',
+  //       isError: true);
+  //   return null;
+  // }
 
   Future<void> _exportLogsToExcel(BuildContext context) async {
     setState(() {
@@ -422,25 +424,12 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
       return;
     }
 
-    String? path = await _getExportPath(context);
-    if (!context.mounted) {
-      setState(() {
-        _isLoadingExport = false;
-      });
-      return;
-    }
-    if (path == null) {
-      setState(() {
-        _isLoadingExport = false;
-      });
-      return;
-    }
-
     try {
       var excel = Excel.createExcel();
       String defaultSheetName = excel.getDefaultSheet()!;
       Sheet sheetObject = excel.sheets[defaultSheetName]!;
 
+      // Clear existing data in the sheet
       for (int i = sheetObject.maxRows - 1; i >= 0; i--) {
         sheetObject.removeRow(i);
       }
@@ -549,12 +538,31 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
 
       List<int>? fileBytes = excel.save();
       if (fileBytes != null) {
-        File file = File(path);
-        await file.writeAsBytes(fileBytes);
-        if (!context.mounted) return;
-        _showNotification('Ekspor Berhasil', 'Data berhasil diekspor ke: $path',
-            isError: false);
-        log('File Excel berhasil diekspor ke: $path');
+        // --- START CHANGES HERE: Use FilePicker to allow user to choose location ---
+        final String fileName =
+            'Log_Pengambilan_Strata_Lite_${DateTime.now().millisecondsSinceEpoch}.xlsx';
+        final String? resultPath = await FilePicker.platform.saveFile(
+          fileName: fileName,
+          type: FileType.custom,
+          allowedExtensions: ['xlsx'],
+          // Do NOT pass bytes here, we will write them manually
+        );
+
+        if (!context.mounted) return; // Check context again after async call
+
+        if (resultPath != null) {
+          final File file = File(resultPath);
+          await file.writeAsBytes(fileBytes);
+          _showNotification(
+              'Ekspor Berhasil', 'Data berhasil diekspor ke: $resultPath',
+              isError: false);
+          log('File Excel berhasil diekspor ke: $resultPath');
+        } else {
+          _showNotification(
+              'Info', 'Ekspor dibatalkan atau file tidak disimpan.',
+              isError: false);
+        }
+        // --- END CHANGES HERE ---
       } else {
         if (!context.mounted) return;
         _showNotification('Ekspor Gagal', 'Gagal membuat file Excel.',
@@ -1227,12 +1235,12 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
                                           const SizedBox(width: 10),
                                           Expanded(
                                             child: Text(
-                                                'Remarks Tambahan: ${logEntry.remarks}',
-                                                style: TextStyle(
-                                                    fontStyle: FontStyle.italic,
-                                                    fontSize: 15,
-                                                    color:
-                                                        Colors.blueGrey[600])),
+                                              'Remarks Tambahan: ${logEntry.remarks}',
+                                              style: TextStyle(
+                                                  fontStyle: FontStyle.italic,
+                                                  fontSize: 15,
+                                                  color: Colors.blueGrey[600]),
+                                            ),
                                           ),
                                         ],
                                       ),
