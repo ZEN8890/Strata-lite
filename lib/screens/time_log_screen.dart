@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:Strata_lite/models/log_entry.dart';
+import 'package:Strata_lite/models/item.dart'; // Import model Item
 import 'dart:developer';
 import 'package:intl/intl.dart';
 import 'dart:async';
@@ -11,7 +12,7 @@ import 'dart:io';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/foundation.dart';
-import 'package:file_picker/file_picker.dart'; // Pastikan ini diimpor
+import 'package:file_picker/file_picker.dart';
 
 class TimeLogScreen extends StatefulWidget {
   const TimeLogScreen({super.key});
@@ -38,16 +39,14 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
   bool _isLoadingExport = false;
   bool _isLoadingDelete = false;
 
-  // GlobalKey untuk mengukur tinggi bagian filter secara dinamis
   final GlobalKey _filterSectionKey = GlobalKey();
-  double _filterSectionHeight = 0; // Default height, will be updated
+  double _filterSectionHeight = 0;
 
   @override
   void initState() {
     super.initState();
     _searchController.addListener(_onSearchChanged);
     _loadDepartments();
-    // Schedule the height measurement after the first frame is built
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _measureFilterSectionHeight();
     });
@@ -67,16 +66,13 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
     });
   }
 
-  // Function to dynamically measure the height of the filter section
   void _measureFilterSectionHeight() {
     final RenderBox? renderBox =
         _filterSectionKey.currentContext?.findRenderObject() as RenderBox?;
     if (renderBox != null) {
-      // Only update if the height is different to avoid unnecessary rebuilds
       if (_filterSectionHeight != renderBox.size.height) {
         setState(() {
-          // Add a small buffer to prevent pixel overflow due to rounding or slight differences
-          _filterSectionHeight = renderBox.size.height + 10.0; // Adding buffer
+          _filterSectionHeight = renderBox.size.height + 10.0;
           log('Filter Section Height measured: $_filterSectionHeight');
         });
       }
@@ -298,13 +294,12 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
       log('Platform desktop, assuming file access is granted.');
       return true;
     }
-    // Fallback for unsupported platforms or if no specific permission handling is needed
     _showNotification(
       'Platform Tidak Didukung',
       'Platform ini tidak didukung untuk operasi file.',
       isError: true,
     );
-    return false; // Ensure a boolean is always returned
+    return false;
   }
 
   void _showPermissionDeniedDialog(
@@ -333,84 +328,6 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
     );
   }
 
-  // --- THIS FUNCTION WILL NO LONGER BE USED DIRECTLY FOR EXPORT PATH ---
-  // Future<String?> _getExportPath(BuildContext context) async {
-  //   String fileName =
-  //       'Log_Pengambilan_Strata_Lite_${DateTime.now().millisecondsSinceEpoch}.xlsx';
-
-  //   if (defaultTargetPlatform == TargetPlatform.android) {
-  //     try {
-  //       Directory? downloadsDirectory = await getDownloadsDirectory();
-  //       if (downloadsDirectory != null) {
-  //         String publicDownloadPath = '${downloadsDirectory.path}/$fileName';
-  //         log('Attempting to export to public Downloads (Android via getDownloadsDirectory): $publicDownloadPath');
-  //         return publicDownloadPath;
-  //       } else {
-  //         log('getDownloadsDirectory returned null. Falling back to hardcoded public Downloads path.');
-  //         String publicDownloadRoot = '/storage/emulated/0/Download';
-  //         Directory publicDownloadDir = Directory(publicDownloadRoot);
-
-  //         if (!await publicDownloadDir.exists()) {
-  //           await publicDownloadDir.create(recursive: true);
-  //         }
-
-  //         String publicDownloadPath = '${publicDownloadDir.path}/$fileName';
-  //         log('Attempting to export to explicit public Downloads (Android): $publicDownloadPath');
-  //         return publicDownloadPath;
-  //       }
-  //     } catch (e) {
-  //       log('Error accessing public Downloads (Android): $e');
-  //       _showNotification('Akses Downloads Gagal',
-  //           'Gagal mengakses folder Downloads publik. Mencoba folder internal.',
-  //           isError: true);
-  //     }
-
-  //     Directory? appSpecificDir = await getApplicationDocumentsDirectory();
-  //     if (appSpecificDir != null) {
-  //       String appSpecificPath = '${appSpecificDir.path}/$fileName';
-  //       log('Falling back to app-specific directory: $appSpecificPath');
-  //       _showNotification('Ekspor Internal',
-  //           'Mengekspor ke folder internal aplikasi karena akses Downloads publik gagal total.',
-  //           isError: false);
-  //       return appSpecificPath;
-  //     }
-
-  //     _showNotification('Direktori Tidak Ditemukan',
-  //         'Tidak dapat menemukan direktori penyimpanan yang cocok untuk ekspor di Android.',
-  //         isError: true);
-  //     return null;
-  //   } else if (defaultTargetPlatform == TargetPlatform.windows ||
-  //       defaultTargetPlatform == TargetPlatform.macOS ||
-  //       defaultTargetPlatform == TargetPlatform.linux) {
-  //     Directory? downloadsDirectory = await getDownloadsDirectory();
-  //     if (downloadsDirectory != null) {
-  //       String desktopDownloadPath = '${downloadsDirectory.path}/$fileName';
-  //       log('Attempting to export to desktop Downloads: $desktopDownloadPath');
-  //       return desktopDownloadPath;
-  //     }
-  //     _showNotification('Direktori Tidak Ditemukan',
-  //         'Tidak dapat menemukan direktori Downloads di desktop.',
-  //         isError: true);
-  //     return null;
-  //   } else if (defaultTargetPlatform == TargetPlatform.iOS) {
-  //     Directory? downloadsDirectory = await getDownloadsDirectory();
-  //     if (downloadsDirectory != null) {
-  //       String iOSDownloadPath = '${downloadsDirectory.path}/$fileName';
-  //       log('Attempting to export to iOS app files directory: $iOSDownloadPath');
-  //       return iOSDownloadPath;
-  //     }
-  //     _showNotification('Direktori Tidak Ditemukan',
-  //         'Tidak dapat menemukan direktori penyimpanan di iOS.',
-  //         isError: true);
-  //     return null;
-  //   }
-
-  //   _showNotification('Platform Tidak Didukung',
-  //       'Platform ini tidak didukung untuk operasi file.',
-  //       isError: true);
-  //   return null;
-  // }
-
   Future<void> _exportLogsToExcel(BuildContext context) async {
     setState(() {
       _isLoadingExport = true;
@@ -429,7 +346,6 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
       String defaultSheetName = excel.getDefaultSheet()!;
       Sheet sheetObject = excel.sheets[defaultSheetName]!;
 
-      // Clear existing data in the sheet
       for (int i = sheetObject.maxRows - 1; i >= 0; i--) {
         sheetObject.removeRow(i);
       }
@@ -538,17 +454,15 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
 
       List<int>? fileBytes = excel.save();
       if (fileBytes != null) {
-        // --- START CHANGES HERE: Use FilePicker to allow user to choose location ---
         final String fileName =
             'Log_Pengambilan_Strata_Lite_${DateTime.now().millisecondsSinceEpoch}.xlsx';
         final String? resultPath = await FilePicker.platform.saveFile(
           fileName: fileName,
           type: FileType.custom,
           allowedExtensions: ['xlsx'],
-          // Do NOT pass bytes here, we will write them manually
         );
 
-        if (!context.mounted) return; // Check context again after async call
+        if (!context.mounted) return;
 
         if (resultPath != null) {
           final File file = File(resultPath);
@@ -562,7 +476,6 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
               'Info', 'Ekspor dibatalkan atau file tidak disimpan.',
               isError: false);
         }
-        // --- END CHANGES HERE ---
       } else {
         if (!context.mounted) return;
         _showNotification('Ekspor Gagal', 'Gagal membuat file Excel.',
@@ -642,8 +555,14 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
               isGreaterThanOrEqualTo: DateTime(startDateToDelete.year,
                   startDateToDelete.month, startDateToDelete.day))
           .where('timestamp',
-              isLessThanOrEqualTo: DateTime(endDateToDelete.year,
-                  endDateToDelete.month, endDateToDelete.day, 23, 59, 59, 999))
+              isLessThanOrEqualTo: DateTime(
+                  endDateToDelete.year,
+                  endDateToDelete.year,
+                  endDateToDelete.day,
+                  23,
+                  59,
+                  59,
+                  999)) // Fixed month to endDateToDelete.month
           .get();
 
       WriteBatch batch = _firestore.batch();
@@ -690,26 +609,22 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
     query = query.orderBy('timestamp', descending: true);
 
     return Scaffold(
-      resizeToAvoidBottomInset: true, // Crucial for keyboard handling
+      resizeToAvoidBottomInset: true,
       body: NestedScrollView(
         headerSliverBuilder: (BuildContext context, bool innerBoxIsScrolled) {
           return <Widget>[
             SliverAppBar(
               expandedHeight: _filterSectionHeight > 0
-                  ? _filterSectionHeight + 20.0 // Add a buffer
-                  : 450.0, // Fallback if not measured yet
-              floating: true, // AppBar floats when scrolling down
-              pinned: true, // AppBar stays pinned at the top
-              snap: true, // Snaps the AppBar open/closed
+                  ? _filterSectionHeight + 20.0
+                  : 450.0,
+              floating: true,
+              pinned: true,
+              snap: true,
               flexibleSpace: FlexibleSpaceBar(
-                // The actual content that expands and collapses
                 background: SingleChildScrollView(
-                  // Allow the filter section itself to scroll if it's very tall
-                  physics:
-                      const NeverScrollableScrollPhysics(), // Managed by NestedScrollView
+                  physics: const NeverScrollableScrollPhysics(),
                   child: Padding(
-                    key:
-                        _filterSectionKey, // Key to measure its height dynamically
+                    key: _filterSectionKey,
                     padding: const EdgeInsets.all(16.0),
                     child: Card(
                       margin: EdgeInsets.zero,
@@ -721,8 +636,7 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
                         padding: const EdgeInsets.all(16.0),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisSize:
-                              MainAxisSize.min, // Take minimum vertical space
+                          mainAxisSize: MainAxisSize.min,
                           children: [
                             const Text(
                               'Opsi Filter & Aksi:',
@@ -733,7 +647,6 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
                               ),
                             ),
                             const SizedBox(height: 15),
-
                             TextField(
                               controller: _searchController,
                               decoration: InputDecoration(
@@ -751,8 +664,6 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
                               ),
                             ),
                             const SizedBox(height: 15),
-
-                            // Date Filters
                             const Text('Filter Tanggal:',
                                 style: TextStyle(
                                     fontWeight: FontWeight.bold, fontSize: 16)),
@@ -814,8 +725,6 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
                               ],
                             ),
                             const SizedBox(height: 15),
-
-                            // Time Filters
                             const Text('Filter Waktu:',
                                 style: TextStyle(
                                     fontWeight: FontWeight.bold, fontSize: 16)),
@@ -875,8 +784,6 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
                               ],
                             ),
                             const SizedBox(height: 15),
-
-                            // Department Filter
                             const Text('Filter Departemen:',
                                 style: TextStyle(
                                     fontWeight: FontWeight.bold, fontSize: 16)),
@@ -928,8 +835,6 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
                                 child: LinearProgressIndicator(),
                               ),
                             const SizedBox(height: 15),
-
-                            // Action Buttons (Reset, Export, Delete)
                             Row(
                               mainAxisAlignment: MainAxisAlignment.spaceAround,
                               children: [
@@ -1017,7 +922,6 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
           ];
         },
         body: Column(
-          // This Column holds the section title and the ListView
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Padding(
@@ -1029,7 +933,6 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
             ),
             const SizedBox(height: 10),
             Expanded(
-              // Expanded is crucial here to make the ListView fill the remaining space
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16.0),
                 child: StreamBuilder<QuerySnapshot>(
@@ -1128,7 +1031,6 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
                             '${DateFormat('HH:mm:ss').format(logEntry.timestamp)}';
 
                         return Card(
-                          // --- Visual Enhancements for the Card ---
                           margin: const EdgeInsets.symmetric(
                               horizontal: 0, vertical: 10.0),
                           elevation: 8,
@@ -1187,6 +1089,79 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
                                     ),
                                   ],
                                 ),
+                                const SizedBox(height: 6),
+                                // --- START NEW FEATURE: Display remaining stock ---
+                                FutureBuilder<QuerySnapshot>(
+                                  future: _firestore
+                                      .collection('items')
+                                      .where('barcode',
+                                          isEqualTo: logEntry.barcode)
+                                      .limit(1)
+                                      .get(),
+                                  builder: (context, itemSnapshot) {
+                                    if (itemSnapshot.connectionState ==
+                                        ConnectionState.waiting) {
+                                      return const Padding(
+                                        padding:
+                                            EdgeInsets.symmetric(vertical: 4.0),
+                                        child: SizedBox(
+                                          width:
+                                              120, // Give it a fixed width to prevent jumpiness
+                                          height: 16, // Fixed height
+                                          child: LinearProgressIndicator(),
+                                        ),
+                                      );
+                                    }
+                                    if (itemSnapshot.hasError) {
+                                      log('Error fetching item for barcode ${logEntry.barcode}: ${itemSnapshot.error}');
+                                      return const Text('Sisa Stok: Error',
+                                          style: TextStyle(
+                                              fontSize: 14, color: Colors.red));
+                                    }
+                                    if (itemSnapshot.hasData &&
+                                        itemSnapshot.data!.docs.isNotEmpty) {
+                                      final itemData =
+                                          itemSnapshot.data!.docs.first.data()
+                                              as Map<String, dynamic>;
+                                      final remainingStock =
+                                          itemData['quantityOrRemark'];
+                                      String stockText = '';
+                                      if (remainingStock is int) {
+                                        stockText =
+                                            'Sisa Stok: $remainingStock';
+                                      } else {
+                                        stockText =
+                                            'Jenis Item: Tidak Bisa Dihitung';
+                                      }
+                                      return Padding(
+                                        padding:
+                                            const EdgeInsets.only(top: 4.0),
+                                        child: Row(
+                                          children: [
+                                            const Icon(Icons.inventory_2,
+                                                size: 20,
+                                                color: Colors.blueGrey),
+                                            const SizedBox(width: 10),
+                                            Text(stockText,
+                                                style: TextStyle(
+                                                    fontSize: 16,
+                                                    color: Colors.green[800],
+                                                    fontWeight:
+                                                        FontWeight.bold)),
+                                          ],
+                                        ),
+                                      );
+                                    }
+                                    return const Padding(
+                                      padding: EdgeInsets.only(top: 4.0),
+                                      child: Text('Sisa Stok: Tidak Ditemukan',
+                                          style: TextStyle(
+                                              fontSize: 14,
+                                              color: Colors.orange)),
+                                    );
+                                  },
+                                ),
+                                // --- END NEW FEATURE ---
                                 const SizedBox(height: 6),
                                 Row(
                                   children: [

@@ -192,6 +192,12 @@ class _ItemListScreenState extends State<ItemListScreen> {
     );
   }
 
+  // NOTE: _getExportPath is no longer directly used for export path selection
+  // as FilePicker.platform.saveFile will handle the user's chosen location.
+  // This function might still be useful for fallback internal paths if FilePicker.saveFile
+  // fails or for specific Android scenarios where direct path is needed.
+  // For now, it's commented out as it's not used by the updated export logic.
+  /*
   Future<String?> _getExportPath(BuildContext context) async {
     String fileName =
         'Daftar_Barang_Strata_Lite_${DateTime.now().millisecondsSinceEpoch}.xlsx';
@@ -260,6 +266,7 @@ class _ItemListScreenState extends State<ItemListScreen> {
         isError: true);
     return null;
   }
+  */
 
   Future<void> _exportDataToExcel(BuildContext context) async {
     setState(() {
@@ -274,34 +281,15 @@ class _ItemListScreenState extends State<ItemListScreen> {
       return;
     }
 
-    String? path = await _getExportPath(context);
-    if (!context.mounted) {
-      setState(() {
-        _isLoadingExport = false;
-      });
-      return;
-    }
-    if (path == null) {
-      setState(() {
-        _isLoadingExport = false;
-      });
-      return;
-    }
-
     try {
       var excel = Excel.createExcel();
-      // Dapatkan nama sheet default yang secara otomatis dibuat saat inisialisasi.
       String defaultSheetName = excel.getDefaultSheet()!;
-
-      // Dapatkan objek sheet default
       Sheet sheetObject = excel.sheets[defaultSheetName]!;
 
-      // Hapus semua data dari sheet default jika ada.
       for (int i = 0; i < sheetObject.maxRows; i++) {
         sheetObject.removeRow(0);
       }
 
-      // Tambahkan header ke sheet default
       sheetObject.appendRow([
         TextCellValue('Nama Barang'),
         TextCellValue('Barcode'),
@@ -316,7 +304,6 @@ class _ItemListScreenState extends State<ItemListScreen> {
       }).toList();
 
       for (var item in itemsToExport) {
-        // PERUBAHAN DI SINI: Sertakan jam, menit, detik dalam format tanggal
         String formattedDate =
             DateFormat('dd-MM-yyyy HH:mm:ss').format(item.createdAt);
         sheetObject.appendRow([
@@ -327,7 +314,6 @@ class _ItemListScreenState extends State<ItemListScreen> {
         ]);
       }
 
-      // Setelah semua data ditambahkan, ganti nama sheet default menjadi "Daftar Barang"
       if (defaultSheetName != 'Daftar Barang') {
         excel.rename(defaultSheetName, 'Daftar Barang');
         log('Sheet "$defaultSheetName" berhasil diubah namanya menjadi "Daftar Barang".');
@@ -335,12 +321,31 @@ class _ItemListScreenState extends State<ItemListScreen> {
 
       List<int>? fileBytes = excel.save();
       if (fileBytes != null) {
-        File file = File(path);
-        await file.writeAsBytes(fileBytes);
-        if (!context.mounted) return;
-        _showNotification('Ekspor Berhasil', 'Data berhasil diekspor ke: $path',
-            isError: false);
-        log('File Excel berhasil diekspor ke: $path');
+        // --- START CHANGES HERE: Use FilePicker to allow user to choose location ---
+        final String fileName =
+            'Daftar_Barang_Strata_Lite_${DateTime.now().millisecondsSinceEpoch}.xlsx';
+        final String? resultPath = await FilePicker.platform.saveFile(
+          fileName: fileName,
+          type: FileType.custom,
+          allowedExtensions: ['xlsx'],
+          // Do NOT pass bytes here, we will write them manually
+        );
+
+        if (!context.mounted) return; // Check context again after async call
+
+        if (resultPath != null) {
+          final File file = File(resultPath);
+          await file.writeAsBytes(fileBytes);
+          _showNotification(
+              'Ekspor Berhasil', 'Data berhasil diekspor ke: $resultPath',
+              isError: false);
+          log('File Excel berhasil diekspor ke: $resultPath');
+        } else {
+          _showNotification(
+              'Info', 'Ekspor dibatalkan atau file tidak disimpan.',
+              isError: false);
+        }
+        // --- END CHANGES HERE ---
       } else {
         if (!context.mounted) return;
         _showNotification('Ekspor Gagal', 'Gagal membuat file Excel.',
@@ -748,11 +753,9 @@ class _ItemListScreenState extends State<ItemListScreen> {
         Padding(
           padding: const EdgeInsets.all(16.0),
           child: Column(
-            // Menggunakan Column untuk mengelompokkan filter
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Card(
-                // Card untuk pencarian
                 margin: EdgeInsets.zero,
                 elevation: 2,
                 shape: RoundedRectangleBorder(
@@ -766,10 +769,10 @@ class _ItemListScreenState extends State<ItemListScreen> {
                       prefixIcon: const Icon(Icons.search),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(8.0),
-                        borderSide: BorderSide.none, // Remove default border
+                        borderSide: BorderSide.none,
                       ),
                       filled: true,
-                      fillColor: Colors.grey[100], // Light fill color
+                      fillColor: Colors.grey[100],
                       contentPadding: const EdgeInsets.symmetric(
                           vertical: 10, horizontal: 10),
                     ),
@@ -777,9 +780,7 @@ class _ItemListScreenState extends State<ItemListScreen> {
                 ),
               ),
               const SizedBox(height: 15),
-
               Card(
-                // Card untuk tombol aksi (Ekspor, Impor) - Tombol Filter dihapus
                 margin: EdgeInsets.zero,
                 elevation: 2,
                 shape: RoundedRectangleBorder(
@@ -789,10 +790,8 @@ class _ItemListScreenState extends State<ItemListScreen> {
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceAround,
                     children: [
-                      // Tombol Filter Dihapus dari sini
                       Expanded(
                         child: ElevatedButton.icon(
-                          // Tombol Ekspor
                           onPressed: _isLoadingExport
                               ? null
                               : () => _exportDataToExcel(context),
@@ -802,7 +801,7 @@ class _ItemListScreenState extends State<ItemListScreen> {
                                   height: 20,
                                   child: CircularProgressIndicator(
                                       color: Colors.white, strokeWidth: 2))
-                              : const Icon(Icons.upload_file), // Ganti ikon
+                              : const Icon(Icons.upload_file),
                           label: Text(_isLoadingExport
                               ? 'Mengekspor...'
                               : 'Ekspor Excel'),
@@ -818,7 +817,6 @@ class _ItemListScreenState extends State<ItemListScreen> {
                       const SizedBox(width: 10),
                       Expanded(
                         child: ElevatedButton.icon(
-                          // Tombol Impor
                           onPressed: _isLoadingImport
                               ? null
                               : () => _importDataFromExcel(context),
@@ -828,14 +826,12 @@ class _ItemListScreenState extends State<ItemListScreen> {
                                   height: 20,
                                   child: CircularProgressIndicator(
                                       color: Colors.white, strokeWidth: 2))
-                              : const Icon(
-                                  Icons.download_for_offline), // Ganti ikon
+                              : const Icon(Icons.download_for_offline),
                           label: Text(_isLoadingImport
                               ? 'Mengimpor...'
                               : 'Impor Excel'),
                           style: ElevatedButton.styleFrom(
-                            backgroundColor:
-                                Colors.indigo, // Warna lain untuk impor
+                            backgroundColor: Colors.indigo,
                             foregroundColor: Colors.white,
                             shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(8)),
@@ -848,8 +844,6 @@ class _ItemListScreenState extends State<ItemListScreen> {
                 ),
               ),
               const SizedBox(height: 15),
-
-              // Bagian Daftar Barang
               const Text('Daftar Barang Inventaris:',
                   style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
               const SizedBox(height: 10),
@@ -899,14 +893,12 @@ class _ItemListScreenState extends State<ItemListScreen> {
                   return Card(
                     margin:
                         const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    elevation: 3, // Tambahkan sedikit elevasi
+                    elevation: 3,
                     shape: RoundedRectangleBorder(
-                        borderRadius:
-                            BorderRadius.circular(10)), // Sudut membulat
+                        borderRadius: BorderRadius.circular(10)),
                     child: ListTile(
                       contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 10), // Padding dalam ListTile
+                          horizontal: 16, vertical: 10),
                       title: Text(
                         item.name,
                         style: const TextStyle(
@@ -922,8 +914,8 @@ class _ItemListScreenState extends State<ItemListScreen> {
                               style: const TextStyle(fontSize: 14)),
                           Text(
                             item.quantityOrRemark is int
-                                ? 'Stok: ${item.quantityOrRemark}' // Jika kuantitas adalah int
-                                : 'Jenis: Tidak Bisa Dihitung (Remarks: ${item.quantityOrRemark})', // Jika remarks adalah string
+                                ? 'Stok: ${item.quantityOrRemark}'
+                                : 'Jenis: Tidak Bisa Dihitung (Remarks: ${item.quantityOrRemark})',
                             style: const TextStyle(fontSize: 14),
                           ),
                           Text(
@@ -948,7 +940,6 @@ class _ItemListScreenState extends State<ItemListScreen> {
                         ],
                       ),
                       onTap: () {
-                        // Tidak ada aksi khusus saat tap pada ListTile, bisa ditambahkan jika perlu
                         log('Detail item ${item.name} diklik');
                       },
                     ),
