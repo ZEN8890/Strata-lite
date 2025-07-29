@@ -4,6 +4,9 @@ import 'package:cloud_firestore/cloud_firestore.dart'; // Untuk mengambil data u
 import 'dart:developer'; // Untuk log.log()
 import 'package:another_flushbar/flushbar.dart'; // Untuk notifikasi
 
+// Import the LoginScreen to navigate to it
+import 'package:Strata_lite/screens/login_screen.dart';
+
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
 
@@ -185,6 +188,35 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
+  // --- START NEW LOGOUT FUNCTION ---
+  Future<void> _logout() async {
+    setState(() {
+      _isLoading = true; // Show loading indicator during logout
+    });
+    try {
+      await _auth.signOut();
+      if (!context.mounted) return;
+      // Navigate to LoginScreen and remove all previous routes
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (context) => const LoginScreen()),
+        (Route<dynamic> route) =>
+            false, // This predicate ensures all routes are removed
+      );
+      _showNotification('Logout Berhasil', 'Anda telah berhasil keluar.',
+          isError: false);
+      log('User logged out successfully.');
+    } catch (e) {
+      _showNotification('Logout Gagal', 'Terjadi kesalahan saat logout: $e',
+          isError: true);
+      log('Error during logout: $e');
+    } finally {
+      setState(() {
+        _isLoading = false;
+      });
+    }
+  }
+  // --- END NEW LOGOUT FUNCTION ---
+
   @override
   Widget build(BuildContext context) {
     return Padding(
@@ -286,6 +318,30 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             ? const CircularProgressIndicator(
                                 color: Colors.white)
                             : const Text('Simpan Perubahan'),
+                      ),
+                    ),
+                    const SizedBox(height: 20), // Spacer for logout button
+                    Center(
+                      child: ElevatedButton.icon(
+                        // New Logout Button
+                        onPressed:
+                            _isLoading ? null : _logout, // Disable if loading
+                        icon: _isLoading
+                            ? const SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(
+                                    color: Colors.white, strokeWidth: 2))
+                            : const Icon(Icons.logout),
+                        label: Text(_isLoading ? 'Logging out...' : 'Logout'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.red, // Red for logout
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 20, vertical: 12),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8)),
+                        ),
                       ),
                     ),
                   ],

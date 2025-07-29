@@ -389,7 +389,10 @@ class _ItemListScreenState extends State<ItemListScreen> {
         var bytes = file.readAsBytesSync();
         var excel = Excel.decodeBytes(bytes);
 
-        List<Item> importedItems = [];
+        int importedCount = 0;
+        int updatedCount = 0;
+        int skippedCount = 0; // For items with missing required data
+
         // Asumsi sheet pertama adalah yang berisi data (atau sheet bernama "Daftar Barang" jika ada)
         String? sheetName = excel.tables.keys.firstWhere(
           (key) => key == 'Daftar Barang',
@@ -410,36 +413,23 @@ class _ItemListScreenState extends State<ItemListScreen> {
 
         Sheet table = excel.tables[sheetName]!;
 
-        for (int i = 1; i < (table.rows.length); i++) {
-          // Mulai dari baris 1 untuk melewati header
-          var row = table.rows[i];
-          if (row.length >= 3) {
-            // Pastikan ada cukup kolom data
-            String name = row[0]?.value?.toString() ?? '';
-            String barcode = row[1]?.value?.toString() ?? '';
-            String quantityOrRemarkString = row[2]?.value?.toString() ?? '';
+        // Get headers from the first row to determine column indices
+        final headerRow = table.rows.isNotEmpty
+            ? table.rows[0]
+                .map((cell) => cell?.value?.toString().trim())
+                .toList()
+            : [];
 
-            dynamic quantityOrRemark;
-            if (int.tryParse(quantityOrRemarkString) != null) {
-              quantityOrRemark = int.parse(quantityOrRemarkString);
-            } else {
-              quantityOrRemark = quantityOrRemarkString;
-            }
+        final nameIndex = headerRow.indexOf('Nama Barang');
+        final barcodeIndex = headerRow.indexOf('Barcode');
+        final quantityOrRemarkIndex = headerRow.indexOf('Kuantitas/Remarks');
 
-            if (name.isNotEmpty && barcode.isNotEmpty) {
-              importedItems.add(Item(
-                name: name,
-                barcode: barcode,
-                quantityOrRemark: quantityOrRemark,
-                createdAt: DateTime.now(),
-              ));
-            }
-          }
-        }
-
-        if (importedItems.isEmpty) {
+        // Basic validation for required headers
+        if (nameIndex == -1 ||
+            barcodeIndex == -1 ||
+            quantityOrRemarkIndex == -1) {
           _showNotification('Impor Gagal',
-              'Tidak ada data valid yang ditemukan untuk diimpor dari file Excel.',
+              'File Excel tidak memiliki semua kolom yang diperlukan (Nama Barang, Barcode, Kuantitas/Remarks).',
               isError: true);
           setState(() {
             _isLoadingImport = false;
@@ -448,20 +438,84 @@ class _ItemListScreenState extends State<ItemListScreen> {
         }
 
         WriteBatch batch = _firestore.batch();
-        for (var item in importedItems) {
-          // Opsional: Cek duplikasi barcode saat impor
-          QuerySnapshot existingItems = await _firestore
-              .collection('items')
-              .where('barcode', isEqualTo: item.barcode)
-              .limit(1)
-              .get();
-          if (existingItems.docs.isNotEmpty) {
-            // Jika barcode duplikat, bisa lewati atau update yang sudah ada
-            log('Skipping duplicate item during import: ${item.name} with barcode ${item.barcode}');
+
+        for (int i = 1; i < (table.rows.length); i++) {
+          // Mulai dari baris 1 untuk melewati header
+          var row = table.rows[i];
+
+          String name = (row.length > nameIndex
+                  ? row[nameIndex]?.value?.toString()
+                  : '') ??
+              '';
+          String barcode = (row.length > barcodeIndex
+                  ? row[barcodeIndex]?.value?.toString()
+                  : '') ??
+              '';
+          String quantityOrRemarkString = (row.length > quantityOrRemarkIndex
+                  ? row[quantityOrRemarkIndex]?.value?.toString()
+                  : '') ??
+              '';
+
+          // Basic validation for name and barcode
+          if (name.isEmpty || barcode.isEmpty) {
+            log('Skipping row $i: Nama Barang atau Barcode kosong.');
+            skippedCount++;
             continue;
           }
-          batch.set(_firestore.collection('items').doc(), item.toFirestore());
+
+          dynamic quantityOrRemark;
+          if (int.tryParse(quantityOrRemarkString) != null) {
+            quantityOrRemark = int.parse(quantityOrRemarkString);
+            if (quantityOrRemark <= 0) {
+              // Ensure quantity is positive for int-based items
+              log('Skipping row $i: Kuantitas harus angka positif.');
+              skippedCount++;
+              continue;
+            }
+          } else {
+            quantityOrRemark = quantityOrRemarkString;
+            if (quantityOrRemark.isEmpty) {
+              // Ensure remarks is not empty for string-based items
+              log('Skipping row $i: Remarks tidak boleh kosong.');
+              skippedCount++;
+              continue;
+            }
+          }
+
+          // Check for existing item by barcode
+          QuerySnapshot existingItems = await _firestore
+              .collection('items')
+              .where('barcode', isEqualTo: barcode)
+              .limit(1)
+              .get();
+
+          if (existingItems.docs.isNotEmpty) {
+            // Item exists, update it
+            String itemId = existingItems.docs.first.id;
+            batch.update(_firestore.collection('items').doc(itemId), {
+              'name': name,
+              'barcode':
+                  barcode, // Barcode might not change, but include for consistency
+              'quantityOrRemark': quantityOrRemark,
+              // createdAt should not be updated on existing items, only on creation
+            });
+            updatedCount++;
+            log('Item updated: ${name} with barcode ${barcode}');
+          } else {
+            // Item does not exist, add it as new
+            batch.set(
+                _firestore.collection('items').doc(),
+                Item(
+                  name: name,
+                  barcode: barcode,
+                  quantityOrRemark: quantityOrRemark,
+                  createdAt: DateTime.now(), // Set creation date for new items
+                ).toFirestore());
+            importedCount++;
+            log('Item imported: ${name} with barcode ${barcode}');
+          }
         }
+
         await batch.commit();
 
         if (!context.mounted) {
@@ -470,13 +524,35 @@ class _ItemListScreenState extends State<ItemListScreen> {
           });
           return;
         }
-        _showNotification('Impor Berhasil',
-            'Berhasil mengimpor ${importedItems.length} item dari Excel!',
-            isError: false);
-        log('Item yang diimpor dan disimpan ke Firestore: $importedItems');
+
+        String importSummaryMessage = '';
+        if (importedCount > 0) {
+          importSummaryMessage +=
+              '${importedCount} item baru berhasil diimpor.';
+        }
+        if (updatedCount > 0) {
+          if (importedCount > 0) importSummaryMessage += '\n';
+          importSummaryMessage += '${updatedCount} item berhasil diperbarui.';
+        }
+        if (skippedCount > 0) {
+          if (importedCount > 0 || updatedCount > 0)
+            importSummaryMessage += '\n';
+          importSummaryMessage +=
+              '${skippedCount} baris dilewati karena data tidak valid.';
+        }
+        if (importedCount == 0 && updatedCount == 0 && skippedCount == 0) {
+          importSummaryMessage =
+              'Tidak ada item yang diimpor atau diperbarui dari file Excel.';
+        }
+
+        _showNotification('Impor Selesai!', importSummaryMessage,
+            isError:
+                (skippedCount > 0)); // Show error if any items were skipped
+        log('Ringkasan Impor: $importSummaryMessage');
       } else {
         _showNotification('Impor Dibatalkan', 'Pemilihan file dibatalkan.',
-            isError: true);
+            isError:
+                false); // Changed to false as it's not an error, just cancellation
       }
     } catch (e) {
       if (!context.mounted) return;
