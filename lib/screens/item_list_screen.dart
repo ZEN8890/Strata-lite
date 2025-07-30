@@ -7,7 +7,7 @@ import 'package:permission_handler/permission_handler.dart'; // Untuk izin penyi
 import 'package:cloud_firestore/cloud_firestore.dart'; // Import Cloud Firestore
 import 'package:Strata_lite/models/item.dart'; // Import model Item
 import 'dart:developer'; // Untuk log.log()
-import 'package:device_info_plus/device_info_plus.dart'; // Import device_info_plus
+import 'package:device_info_plus/device_info_plus.dart'; // Corrected import for device_info_plus
 import 'package:flutter/foundation.dart'; // Untuk defaultTargetPlatform
 import 'package:another_flushbar/flushbar.dart'; // Import Flushbar
 import 'dart:async'; // Untuk Timer
@@ -341,9 +341,9 @@ class _ItemListScreenState extends State<ItemListScreen> {
               isError: false);
           log('File Excel berhasil diekspor ke: $resultPath');
         } else {
-          _showNotification(
-              'Info', 'Ekspor dibatalkan atau file tidak disimpan.',
-              isError: false);
+          _showNotification('Ekspor Dibatalkan',
+              'Ekspor dibatalkan atau file tidak disimpan.',
+              isError: true); // Changed isError to true
         }
         // --- END CHANGES HERE ---
       } else {
@@ -556,8 +556,7 @@ class _ItemListScreenState extends State<ItemListScreen> {
         log('Ringkasan Impor: $importSummaryMessage');
       } else {
         _showNotification('Impor Dibatalkan', 'Pemilihan file dibatalkan.',
-            isError:
-                false); // Changed to false as it's not an error, just cancellation
+            isError: true); // Changed to true for cancellation
       }
     } catch (e) {
       if (!context.mounted) return;

@@ -10,7 +10,7 @@ import 'package:excel/excel.dart';
 import 'package:path_provider/path_provider.dart';
 import 'dart:io';
 import 'package:permission_handler/permission_handler.dart';
-import 'package:device_info_plus/device_info_plus.dart';
+import 'package:device_info_plus/device_info_plus.dart'; // Corrected import
 import 'package:flutter/foundation.dart';
 import 'package:file_picker/file_picker.dart';
 
@@ -26,6 +26,10 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
   TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
 
+  Timer? _notificationTimer;
+  bool _isLoadingExport = false;
+  bool _isLoadingDelete = false;
+
   DateTime? _selectedStartDate;
   DateTime? _selectedEndDate;
   TimeOfDay? _selectedStartTime;
@@ -34,10 +38,6 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
 
   List<String> _dynamicDepartments = ['Semua Departemen'];
   bool _isDepartmentsLoading = true;
-
-  Timer? _notificationTimer;
-  bool _isLoadingExport = false;
-  bool _isLoadingDelete = false;
 
   final GlobalKey _filterSectionKey = GlobalKey();
   double _filterSectionHeight = 0;
@@ -472,9 +472,10 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
               isError: false);
           log('File Excel berhasil diekspor ke: $resultPath');
         } else {
-          _showNotification(
-              'Info', 'Ekspor dibatalkan atau file tidak disimpan.',
-              isError: false);
+          // Changed to true for cancellation and red notification
+          _showNotification('Ekspor Dibatalkan',
+              'Ekspor dibatalkan atau file tidak disimpan.',
+              isError: true);
         }
       } else {
         if (!context.mounted) return;
@@ -557,12 +558,12 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
           .where('timestamp',
               isLessThanOrEqualTo: DateTime(
                   endDateToDelete.year,
-                  endDateToDelete.year,
+                  endDateToDelete.month, // Fixed month here
                   endDateToDelete.day,
                   23,
                   59,
                   59,
-                  999)) // Fixed month to endDateToDelete.month
+                  999))
           .get();
 
       WriteBatch batch = _firestore.batch();

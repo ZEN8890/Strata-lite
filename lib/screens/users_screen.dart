@@ -464,8 +464,10 @@ class _UsersScreenState extends State<UsersScreen> {
             isError: false);
         log('File Excel berhasil diekspor ke: $resultPath');
       } else {
-        _showNotification('Info', 'Ekspor dibatalkan atau file tidak disimpan.',
-            isError: false);
+        // Changed isError to true for cancellation and red notification
+        _showNotification(
+            'Ekspor Dibatalkan', 'Ekspor dibatalkan atau file tidak disimpan.',
+            isError: true);
       }
       // --- END CHANGES HERE ---
     } catch (e) {
@@ -486,8 +488,10 @@ class _UsersScreenState extends State<UsersScreen> {
       );
 
       if (result == null || result.files.single.path == null) {
-        _showNotification('Info', 'Tidak ada file yang dipilih untuk diimpor.',
-            isError: false);
+        // Changed isError to true for cancellation and red notification
+        _showNotification(
+            'Impor Dibatalkan', 'Tidak ada file yang dipilih untuk diimpor.',
+            isError: true);
         return;
       }
 
@@ -670,9 +674,10 @@ class _UsersScreenState extends State<UsersScreen> {
             isError: false);
         log('File template berhasil diunduh ke: $resultPath');
       } else {
-        _showNotification(
-            'Info', 'Pengunduhan template dibatalkan atau file tidak disimpan.',
-            isError: false);
+        // Changed isError to true for cancellation and red notification
+        _showNotification('Pengunduhan Dibatalkan',
+            'Pengunduhan template dibatalkan atau file tidak disimpan.',
+            isError: true);
       }
       // --- END CHANGES HERE ---
     } catch (e) {
