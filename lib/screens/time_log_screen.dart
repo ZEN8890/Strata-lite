@@ -1,7 +1,8 @@
+// Path: lib/screens/time_log_screen.dart
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:Strata_lite/models/log_entry.dart';
-import 'package:Strata_lite/models/item.dart'; // Import model Item
+import 'package:Strata_lite/models/item.dart';
 import 'dart:developer';
 import 'package:intl/intl.dart';
 import 'dart:async';
@@ -10,7 +11,7 @@ import 'package:excel/excel.dart';
 import 'package:path_provider/path_provider.dart';
 import 'dart:io';
 import 'package:permission_handler/permission_handler.dart';
-import 'package:device_info_plus/device_info_plus.dart'; // Corrected import
+import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/foundation.dart';
 import 'package:file_picker/file_picker.dart';
 
@@ -23,7 +24,7 @@ class TimeLogScreen extends StatefulWidget {
 
 class _TimeLogScreenState extends State<TimeLogScreen> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  TextEditingController _searchController = TextEditingController();
+  final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
 
   Timer? _notificationTimer;
@@ -472,7 +473,6 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
               isError: false);
           log('File Excel berhasil diekspor ke: $resultPath');
         } else {
-          // Changed to true for cancellation and red notification
           _showNotification('Ekspor Dibatalkan',
               'Ekspor dibatalkan atau file tidak disimpan.',
               isError: true);
@@ -556,14 +556,8 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
               isGreaterThanOrEqualTo: DateTime(startDateToDelete.year,
                   startDateToDelete.month, startDateToDelete.day))
           .where('timestamp',
-              isLessThanOrEqualTo: DateTime(
-                  endDateToDelete.year,
-                  endDateToDelete.month, // Fixed month here
-                  endDateToDelete.day,
-                  23,
-                  59,
-                  59,
-                  999))
+              isLessThanOrEqualTo: DateTime(endDateToDelete.year,
+                  endDateToDelete.month, endDateToDelete.day, 23, 59, 59, 999))
           .get();
 
       WriteBatch batch = _firestore.batch();
@@ -997,6 +991,26 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
                           return false;
                         }
                       }
+                      if (_selectedStartDate != null) {
+                        DateTime logDate = DateTime(logEntry.timestamp.year,
+                            logEntry.timestamp.month, logEntry.timestamp.day);
+                        DateTime startDate = DateTime(_selectedStartDate!.year,
+                            _selectedStartDate!.month, _selectedStartDate!.day);
+                        if (logDate.isBefore(startDate)) return false;
+                      }
+                      if (_selectedEndDate != null) {
+                        DateTime logDate = DateTime(logEntry.timestamp.year,
+                            logEntry.timestamp.month, logEntry.timestamp.day);
+                        DateTime endDate = DateTime(_selectedEndDate!.year,
+                            _selectedEndDate!.month, _selectedEndDate!.day);
+                        if (logDate.isAfter(endDate)) return false;
+                      }
+
+                      if (_selectedDepartment != null &&
+                          _selectedDepartment != 'Semua Departemen') {
+                        if (logEntry.staffDepartment != _selectedDepartment)
+                          return false;
+                      }
 
                       return true;
                     }).toList();
@@ -1091,7 +1105,6 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
                                   ],
                                 ),
                                 const SizedBox(height: 6),
-                                // --- START NEW FEATURE: Display remaining stock ---
                                 FutureBuilder<QuerySnapshot>(
                                   future: _firestore
                                       .collection('items')
@@ -1106,9 +1119,8 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
                                         padding:
                                             EdgeInsets.symmetric(vertical: 4.0),
                                         child: SizedBox(
-                                          width:
-                                              120, // Give it a fixed width to prevent jumpiness
-                                          height: 16, // Fixed height
+                                          width: 120,
+                                          height: 16,
                                           child: LinearProgressIndicator(),
                                         ),
                                       );
@@ -1162,7 +1174,6 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
                                     );
                                   },
                                 ),
-                                // --- END NEW FEATURE ---
                                 const SizedBox(height: 6),
                                 Row(
                                   children: [

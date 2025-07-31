@@ -1,3 +1,4 @@
+// Path: lib/screens/add_item_screen.dart
 import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'dart:async';
@@ -5,6 +6,7 @@ import 'dart:developer';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:Strata_lite/models/item.dart';
 import 'package:another_flushbar/flushbar.dart';
+import 'package:intl/intl.dart';
 
 class AddItemScreen extends StatefulWidget {
   const AddItemScreen({super.key});
@@ -19,10 +21,12 @@ class _AddItemScreenState extends State<AddItemScreen> {
   final TextEditingController _barcodeController = TextEditingController();
   final TextEditingController _quantityController = TextEditingController();
   final TextEditingController _remarkController = TextEditingController();
+  final TextEditingController _expiryDateController = TextEditingController();
 
   MobileScannerController? _scannerController;
-  bool _isQuantityBased = true;
+  bool _isQuantityBased = true; // Added the switch state back
   bool _isScanning = false;
+  DateTime? _selectedExpiryDate;
 
   Timer? _notificationTimer;
 
@@ -43,6 +47,7 @@ class _AddItemScreenState extends State<AddItemScreen> {
     _barcodeController.dispose();
     _quantityController.dispose();
     _remarkController.dispose();
+    _expiryDateController.dispose();
     _scannerController?.dispose();
     _notificationTimer?.cancel();
     super.dispose();
@@ -120,8 +125,20 @@ class _AddItemScreenState extends State<AddItemScreen> {
       quantityOrRemark = remark;
     }
 
+    if (barcode.length != 13) {
+      _showNotification('Barcode Invalid', 'Barcode harus 13 digit (EAN-13).',
+          isError: true);
+      return;
+    }
+
+    if (_selectedExpiryDate == null) {
+      _showNotification(
+          'Tanggal Kedaluwarsa Kosong', 'Harap pilih tanggal kedaluwarsa.',
+          isError: true);
+      return;
+    }
+
     try {
-      // --- VALIDASI DUPLIKASI BARCODE DI SINI ---
       QuerySnapshot existingItems = await _firestore
           .collection('items')
           .where('barcode', isEqualTo: barcode)
@@ -129,22 +146,22 @@ class _AddItemScreenState extends State<AddItemScreen> {
           .get();
 
       if (existingItems.docs.isNotEmpty) {
-        // Ambil nama item yang sudah ada
         String existingItemName =
             (existingItems.docs.first.data() as Map<String, dynamic>)['name'] ??
                 'Tidak Dikenal';
         _showNotification('Barcode Duplikat',
             'Barcode ini sudah terdaftar untuk item "$existingItemName".',
             isError: true);
-        return; // Hentikan proses jika barcode sudah ada
+        return;
       }
-      // --- AKHIR VALIDASI DUPLIKASI ---
 
       Item newItem = Item(
         name: itemName,
         barcode: barcode,
-        quantityOrRemark: quantityOrRemark,
+        quantityOrRemark:
+            quantityOrRemark, // Reverted to using quantityOrRemark
         createdAt: DateTime.now(),
+        expiryDate: _selectedExpiryDate,
       );
 
       await _firestore.collection('items').add(newItem.toFirestore());
@@ -160,6 +177,8 @@ class _AddItemScreenState extends State<AddItemScreen> {
         _barcodeController.clear();
         _quantityController.clear();
         _remarkController.clear();
+        _expiryDateController.clear();
+        _selectedExpiryDate = null;
         _isQuantityBased = true;
       });
     } catch (e) {
@@ -167,6 +186,22 @@ class _AddItemScreenState extends State<AddItemScreen> {
           'Gagal Menambahkan Barang', 'Gagal menambahkan barang: $e',
           isError: true);
       log('Error adding item: $e');
+    }
+  }
+
+  Future<void> _selectExpiryDate(BuildContext context) async {
+    final DateTime? pickedDate = await showDatePicker(
+      context: context,
+      initialDate: _selectedExpiryDate ?? DateTime.now(),
+      firstDate: DateTime.now(),
+      lastDate: DateTime(2101),
+    );
+    if (pickedDate != null && pickedDate != _selectedExpiryDate) {
+      setState(() {
+        _selectedExpiryDate = pickedDate;
+        _expiryDateController.text =
+            DateFormat('dd-MM-yyyy').format(pickedDate);
+      });
     }
   }
 
@@ -318,39 +353,58 @@ class _AddItemScreenState extends State<AddItemScreen> {
                     ],
                   ),
                   const SizedBox(height: 15),
-                  _isQuantityBased
-                      ? TextFormField(
-                          controller: _quantityController,
-                          decoration: const InputDecoration(
-                            labelText: 'Kuantitas Awal',
-                            border: OutlineInputBorder(),
-                          ),
-                          keyboardType: TextInputType.number,
-                          validator: (value) {
-                            if (value == null || value.isEmpty) {
-                              return 'Kuantitas tidak boleh kosong';
-                            }
-                            if (int.tryParse(value) == null ||
-                                int.parse(value) <= 0) {
-                              return 'Kuantitas harus berupa angka positif';
-                            }
-                            return null;
-                          },
-                        )
-                      : TextFormField(
-                          controller: _remarkController,
-                          decoration: const InputDecoration(
-                            labelText: 'Remarks (Contoh: Cairan, Tidak Habis)',
-                            border: OutlineInputBorder(),
-                          ),
-                          maxLines: 3,
-                          validator: (value) {
-                            if (value == null || value.isEmpty) {
-                              return 'Remarks tidak boleh kosong';
-                            }
-                            return null;
-                          },
-                        ),
+                  if (_isQuantityBased)
+                    TextFormField(
+                      controller: _quantityController,
+                      decoration: const InputDecoration(
+                        labelText: 'Kuantitas Awal',
+                        border: OutlineInputBorder(),
+                      ),
+                      keyboardType: TextInputType.number,
+                      validator: (value) {
+                        if (value == null || value.isEmpty) {
+                          return 'Kuantitas tidak boleh kosong';
+                        }
+                        if (int.tryParse(value) == null ||
+                            int.parse(value) <= 0) {
+                          return 'Kuantitas harus berupa angka positif';
+                        }
+                        return null;
+                      },
+                    )
+                  else
+                    TextFormField(
+                      controller: _remarkController,
+                      decoration: const InputDecoration(
+                        labelText: 'Remarks (Contoh: Cairan, Tidak Habis)',
+                        border: OutlineInputBorder(),
+                      ),
+                      maxLines: 3,
+                      validator: (value) {
+                        if (value == null || value.isEmpty) {
+                          return 'Remarks tidak boleh kosong';
+                        }
+                        return null;
+                      },
+                    ),
+                  const SizedBox(height: 15),
+                  TextFormField(
+                    controller: _expiryDateController,
+                    decoration: const InputDecoration(
+                      labelText: 'Expiry Date',
+                      hintText: 'dd-MM-yyyy',
+                      border: OutlineInputBorder(),
+                      suffixIcon: Icon(Icons.calendar_today),
+                    ),
+                    readOnly: true,
+                    onTap: () => _selectExpiryDate(context),
+                    validator: (value) {
+                      if (value == null || value.isEmpty) {
+                        return 'Expiry Date tidak boleh kosong';
+                      }
+                      return null;
+                    },
+                  ),
                   const SizedBox(height: 20),
                   Center(
                     child: ElevatedButton(

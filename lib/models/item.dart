@@ -1,39 +1,45 @@
-// Definisi model data untuk Barang
+// Path: lib/models/item.dart
+import 'package:cloud_firestore/cloud_firestore.dart';
+
 class Item {
-  String? id; // ID dokumen dari Firestore, bisa null jika baru dibuat
+  String? id;
   final String name;
   final String barcode;
-  final dynamic quantityOrRemark; // Bisa int atau String
-  final DateTime createdAt; // Tanggal dan waktu barang ditambahkan
+  final dynamic
+      quantityOrRemark; // Reverted to dynamic to handle both int (quantity) and String (remarks)
+  final DateTime createdAt;
+  final DateTime? expiryDate;
 
   Item({
     this.id,
     required this.name,
     required this.barcode,
-    required this.quantityOrRemark,
+    required this.quantityOrRemark, // Reverted to dynamic
     required this.createdAt,
+    this.expiryDate,
   });
 
-  // Factory constructor untuk membuat objek Item dari Firestore DocumentSnapshot
-  factory Item.fromFirestore(Map<String, dynamic> data, String id) {
+  // Factory constructor from Firestore document
+  factory Item.fromFirestore(Map<String, dynamic> firestoreData, String docId) {
     return Item(
-      id: id,
-      name: data['name'] as String,
-      barcode: data['barcode'] as String,
-      // Firestore menyimpan angka sebagai num (int atau double), atau string
-      quantityOrRemark: data['quantityOrRemark'],
-      createdAt: (data['createdAt'].toDate() as DateTime),
+      id: docId,
+      name: firestoreData['name'] ?? '',
+      barcode: firestoreData['barcode'] ?? '',
+      quantityOrRemark:
+          firestoreData['quantityOrRemark'], // Reverted to dynamic
+      createdAt: (firestoreData['createdAt'] as Timestamp).toDate(),
+      expiryDate: (firestoreData['expiryDate'] as Timestamp?)?.toDate(),
     );
   }
 
-  // Method untuk mengubah objek Item menjadi Map<String, dynamic>
-  // yang bisa disimpan ke Firestore
+  // Method to convert Item object to a map for Firestore
   Map<String, dynamic> toFirestore() {
     return {
       'name': name,
       'barcode': barcode,
-      'quantityOrRemark': quantityOrRemark,
+      'quantityOrRemark': quantityOrRemark, // Reverted to dynamic
       'createdAt': createdAt,
+      'expiryDate': expiryDate,
     };
   }
 }

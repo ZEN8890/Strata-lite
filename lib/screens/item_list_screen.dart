@@ -1,17 +1,18 @@
+// Path: lib/screens/item_list_screen.dart
 import 'package:flutter/material.dart';
-import 'package:excel/excel.dart'; // Import Excel package
-import 'package:file_picker/file_picker.dart'; // Import File Picker
-import 'package:path_provider/path_provider.dart'; // Untuk mendapatkan direktori penyimpanan
-import 'dart:io'; // Untuk File
-import 'package:permission_handler/permission_handler.dart'; // Untuk izin penyimpanan
-import 'package:cloud_firestore/cloud_firestore.dart'; // Import Cloud Firestore
-import 'package:Strata_lite/models/item.dart'; // Import model Item
-import 'dart:developer'; // Untuk log.log()
-import 'package:device_info_plus/device_info_plus.dart'; // Corrected import for device_info_plus
-import 'package:flutter/foundation.dart'; // Untuk defaultTargetPlatform
-import 'package:another_flushbar/flushbar.dart'; // Import Flushbar
-import 'dart:async'; // Untuk Timer
-import 'package:intl/intl.dart'; // Untuk DateFormat
+import 'package:excel/excel.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:path_provider/path_provider.dart';
+import 'dart:io';
+import 'package:permission_handler/permission_handler.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:Strata_lite/models/item.dart';
+import 'dart:developer';
+import 'package:device_info_plus/device_info_plus.dart';
+import 'package:flutter/foundation.dart';
+import 'package:another_flushbar/flushbar.dart';
+import 'dart:async';
+import 'package:intl/intl.dart';
 
 class ItemListScreen extends StatefulWidget {
   const ItemListScreen({super.key});
@@ -25,9 +26,11 @@ class _ItemListScreenState extends State<ItemListScreen> {
   TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
 
-  Timer? _notificationTimer; // Timer untuk mengontrol frekuensi notifikasi
-  bool _isLoadingExport = false; // Untuk indikator loading ekspor
-  bool _isLoadingImport = false; // Untuk indikator loading impor
+  String _expiryFilter = 'Semua Item';
+
+  Timer? _notificationTimer;
+  bool _isLoadingExport = false;
+  bool _isLoadingImport = false;
 
   @override
   void initState() {
@@ -39,7 +42,7 @@ class _ItemListScreenState extends State<ItemListScreen> {
   void dispose() {
     _searchController.removeListener(_onSearchChanged);
     _searchController.dispose();
-    _notificationTimer?.cancel(); // Batalkan timer notifikasi
+    _notificationTimer?.cancel();
     super.dispose();
   }
 
@@ -49,7 +52,6 @@ class _ItemListScreenState extends State<ItemListScreen> {
     });
   }
 
-  // Fungsi untuk menampilkan notifikasi yang diperbagus (sama seperti di TakeItemScreen)
   void _showNotification(String title, String message, {bool isError = false}) {
     if (!context.mounted) return;
 
@@ -91,7 +93,6 @@ class _ItemListScreenState extends State<ItemListScreen> {
     });
   }
 
-  // Fungsi Pembantu untuk Meminta Izin Penyimpanan
   Future<bool> _requestStoragePermission(BuildContext context) async {
     log('Requesting storage permission...');
     if (defaultTargetPlatform == TargetPlatform.android) {
@@ -192,82 +193,6 @@ class _ItemListScreenState extends State<ItemListScreen> {
     );
   }
 
-  // NOTE: _getExportPath is no longer directly used for export path selection
-  // as FilePicker.platform.saveFile will handle the user's chosen location.
-  // This function might still be useful for fallback internal paths if FilePicker.saveFile
-  // fails or for specific Android scenarios where direct path is needed.
-  // For now, it's commented out as it's not used by the updated export logic.
-  /*
-  Future<String?> _getExportPath(BuildContext context) async {
-    String fileName =
-        'Daftar_Barang_Strata_Lite_${DateTime.now().millisecondsSinceEpoch}.xlsx';
-
-    if (defaultTargetPlatform == TargetPlatform.android) {
-      try {
-        String publicDownloadRoot = '/storage/emulated/0/Download';
-        Directory publicDownloadDir = Directory(publicDownloadRoot);
-
-        if (!await publicDownloadDir.exists()) {
-          await publicDownloadDir.create(recursive: true);
-        }
-
-        String publicDownloadPath = '${publicDownloadDir.path}/$fileName';
-        log('Attempting to export to explicit public Downloads (Android): $publicDownloadPath');
-        return publicDownloadPath;
-      } catch (e) {
-        log('Error directly accessing public Downloads (hardcoded path): $e');
-        _showNotification('Akses Downloads Gagal',
-            'Gagal mengakses folder Downloads publik secara langsung. Mencoba folder internal.',
-            isError: true);
-      }
-
-      Directory? appSpecificDir = await getApplicationDocumentsDirectory();
-      if (appSpecificDir != null) {
-        String appSpecificPath = '${appSpecificDir.path}/$fileName';
-        log('Falling back to app-specific directory: $appSpecificPath');
-        _showNotification('Ekspor Internal',
-            'Mengekspor ke folder internal aplikasi karena akses Downloads publik gagal total.',
-            isError: false);
-        return appSpecificPath;
-      }
-
-      _showNotification('Direktori Tidak Ditemukan',
-          'Tidak dapat menemukan direktori penyimpanan yang cocok untuk ekspor di Android.',
-          isError: true);
-      return null;
-    } else if (defaultTargetPlatform == TargetPlatform.windows ||
-        defaultTargetPlatform == TargetPlatform.macOS ||
-        defaultTargetPlatform == TargetPlatform.linux) {
-      Directory? downloadsDirectory = await getDownloadsDirectory();
-      if (downloadsDirectory != null) {
-        String desktopDownloadPath = '${downloadsDirectory.path}/$fileName';
-        log('Attempting to export to desktop Downloads: $desktopDownloadPath');
-        return desktopDownloadPath;
-      }
-      _showNotification('Direktori Tidak Ditemukan',
-          'Tidak dapat menemukan direktori Downloads di desktop.',
-          isError: true);
-      return null;
-    } else if (defaultTargetPlatform == TargetPlatform.iOS) {
-      Directory? downloadsDirectory = await getDownloadsDirectory();
-      if (downloadsDirectory != null) {
-        String iOSDownloadPath = '${downloadsDirectory.path}/$fileName';
-        log('Attempting to export to iOS app files directory: $iOSDownloadPath');
-        return iOSDownloadPath;
-      }
-      _showNotification('Direktori Tidak Ditemukan',
-          'Tidak dapat menemukan direktori penyimpanan di iOS.',
-          isError: true);
-      return null;
-    }
-
-    _showNotification('Platform Tidak Didukung',
-        'Platform ini tidak didukung untuk operasi file.',
-        isError: true);
-    return null;
-  }
-  */
-
   Future<void> _exportDataToExcel(BuildContext context) async {
     setState(() {
       _isLoadingExport = true;
@@ -293,8 +218,9 @@ class _ItemListScreenState extends State<ItemListScreen> {
       sheetObject.appendRow([
         TextCellValue('Nama Barang'),
         TextCellValue('Barcode'),
-        TextCellValue('Kuantitas/Remarks'),
-        TextCellValue('Tanggal Ditambahkan')
+        TextCellValue('Kuantitas/Remarks'), // Reverted to original name
+        TextCellValue('Tanggal Ditambahkan'),
+        TextCellValue('Expiry Date')
       ]);
 
       QuerySnapshot snapshot =
@@ -306,11 +232,16 @@ class _ItemListScreenState extends State<ItemListScreen> {
       for (var item in itemsToExport) {
         String formattedDate =
             DateFormat('dd-MM-yyyy HH:mm:ss').format(item.createdAt);
+        String formattedExpiryDate = item.expiryDate != null
+            ? DateFormat('dd-MM-yyyy').format(item.expiryDate!)
+            : 'N/A';
         sheetObject.appendRow([
           TextCellValue(item.name),
           TextCellValue(item.barcode),
-          TextCellValue(item.quantityOrRemark.toString()),
-          TextCellValue(formattedDate)
+          TextCellValue(
+              item.quantityOrRemark.toString()), // Reverted to dynamic property
+          TextCellValue(formattedDate),
+          TextCellValue(formattedExpiryDate)
         ]);
       }
 
@@ -321,17 +252,15 @@ class _ItemListScreenState extends State<ItemListScreen> {
 
       List<int>? fileBytes = excel.save();
       if (fileBytes != null) {
-        // --- START CHANGES HERE: Use FilePicker to allow user to choose location ---
         final String fileName =
             'Daftar_Barang_Strata_Lite_${DateTime.now().millisecondsSinceEpoch}.xlsx';
         final String? resultPath = await FilePicker.platform.saveFile(
           fileName: fileName,
           type: FileType.custom,
           allowedExtensions: ['xlsx'],
-          // Do NOT pass bytes here, we will write them manually
         );
 
-        if (!context.mounted) return; // Check context again after async call
+        if (!context.mounted) return;
 
         if (resultPath != null) {
           final File file = File(resultPath);
@@ -343,9 +272,8 @@ class _ItemListScreenState extends State<ItemListScreen> {
         } else {
           _showNotification('Ekspor Dibatalkan',
               'Ekspor dibatalkan atau file tidak disimpan.',
-              isError: true); // Changed isError to true
+              isError: true);
         }
-        // --- END CHANGES HERE ---
       } else {
         if (!context.mounted) return;
         _showNotification('Ekspor Gagal', 'Gagal membuat file Excel.',
@@ -365,7 +293,7 @@ class _ItemListScreenState extends State<ItemListScreen> {
 
   Future<void> _importDataFromExcel(BuildContext context) async {
     setState(() {
-      _isLoadingImport = true; // Tampilkan loading saat impor
+      _isLoadingImport = true;
     });
 
     bool hasPermission = await _requestStoragePermission(context);
@@ -396,17 +324,14 @@ class _ItemListScreenState extends State<ItemListScreen> {
 
         int importedCount = 0;
         int updatedCount = 0;
-        int skippedCount = 0; // For items with missing required data
+        int skippedCount = 0;
 
-        // Asumsi sheet pertama adalah yang berisi data (atau sheet bernama "Daftar Barang" jika ada)
         String? sheetName = excel.tables.keys.firstWhere(
           (key) => key == 'Daftar Barang',
-          orElse: () => excel.tables.keys
-              .first, // Fallback ke sheet pertama jika 'Daftar Barang' tidak ditemukan
+          orElse: () => excel.tables.keys.first,
         );
 
         if (sheetName == null) {
-          // Jika tidak ada sheet sama sekali (walaupun mustahil dengan Excel.decodeBytes)
           _showNotification('Impor Gagal',
               'File Excel tidak memiliki sheet yang dapat dibaca.',
               isError: true);
@@ -418,7 +343,6 @@ class _ItemListScreenState extends State<ItemListScreen> {
 
         Sheet table = excel.tables[sheetName]!;
 
-        // Get headers from the first row to determine column indices
         final headerRow = table.rows.isNotEmpty
             ? table.rows[0]
                 .map((cell) => cell?.value?.toString().trim())
@@ -428,8 +352,8 @@ class _ItemListScreenState extends State<ItemListScreen> {
         final nameIndex = headerRow.indexOf('Nama Barang');
         final barcodeIndex = headerRow.indexOf('Barcode');
         final quantityOrRemarkIndex = headerRow.indexOf('Kuantitas/Remarks');
+        final expiryDateIndex = headerRow.indexOf('Expiry Date');
 
-        // Basic validation for required headers
         if (nameIndex == -1 ||
             barcodeIndex == -1 ||
             quantityOrRemarkIndex == -1) {
@@ -445,7 +369,6 @@ class _ItemListScreenState extends State<ItemListScreen> {
         WriteBatch batch = _firestore.batch();
 
         for (int i = 1; i < (table.rows.length); i++) {
-          // Mulai dari baris 1 untuk melewati header
           var row = table.rows[i];
 
           String name = (row.length > nameIndex
@@ -460,8 +383,12 @@ class _ItemListScreenState extends State<ItemListScreen> {
                   ? row[quantityOrRemarkIndex]?.value?.toString()
                   : '') ??
               '';
+          String expiryDateString =
+              (row.length > expiryDateIndex && expiryDateIndex != -1
+                      ? row[expiryDateIndex]?.value?.toString()
+                      : '') ??
+                  '';
 
-          // Basic validation for name and barcode
           if (name.isEmpty || barcode.isEmpty) {
             log('Skipping row $i: Nama Barang atau Barcode kosong.');
             skippedCount++;
@@ -472,7 +399,6 @@ class _ItemListScreenState extends State<ItemListScreen> {
           if (int.tryParse(quantityOrRemarkString) != null) {
             quantityOrRemark = int.parse(quantityOrRemarkString);
             if (quantityOrRemark <= 0) {
-              // Ensure quantity is positive for int-based items
               log('Skipping row $i: Kuantitas harus angka positif.');
               skippedCount++;
               continue;
@@ -480,14 +406,23 @@ class _ItemListScreenState extends State<ItemListScreen> {
           } else {
             quantityOrRemark = quantityOrRemarkString;
             if (quantityOrRemark.isEmpty) {
-              // Ensure remarks is not empty for string-based items
               log('Skipping row $i: Remarks tidak boleh kosong.');
               skippedCount++;
               continue;
             }
           }
 
-          // Check for existing item by barcode
+          DateTime? expiryDate;
+          if (expiryDateString.isNotEmpty) {
+            try {
+              expiryDate = DateFormat('dd-MM-yyyy').parse(expiryDateString);
+            } catch (e) {
+              log('Skipping row $i: Format Expiry Date tidak valid. Format yang diharapkan: dd-MM-yyyy. Error: $e');
+              skippedCount++;
+              continue;
+            }
+          }
+
           QuerySnapshot existingItems = await _firestore
               .collection('items')
               .where('barcode', isEqualTo: barcode)
@@ -495,26 +430,24 @@ class _ItemListScreenState extends State<ItemListScreen> {
               .get();
 
           if (existingItems.docs.isNotEmpty) {
-            // Item exists, update it
             String itemId = existingItems.docs.first.id;
             batch.update(_firestore.collection('items').doc(itemId), {
               'name': name,
-              'barcode':
-                  barcode, // Barcode might not change, but include for consistency
+              'barcode': barcode,
               'quantityOrRemark': quantityOrRemark,
-              // createdAt should not be updated on existing items, only on creation
+              'expiryDate': expiryDate,
             });
             updatedCount++;
             log('Item updated: ${name} with barcode ${barcode}');
           } else {
-            // Item does not exist, add it as new
             batch.set(
                 _firestore.collection('items').doc(),
                 Item(
                   name: name,
                   barcode: barcode,
                   quantityOrRemark: quantityOrRemark,
-                  createdAt: DateTime.now(), // Set creation date for new items
+                  createdAt: DateTime.now(),
+                  expiryDate: expiryDate,
                 ).toFirestore());
             importedCount++;
             log('Item imported: ${name} with barcode ${barcode}');
@@ -551,12 +484,11 @@ class _ItemListScreenState extends State<ItemListScreen> {
         }
 
         _showNotification('Impor Selesai!', importSummaryMessage,
-            isError:
-                (skippedCount > 0)); // Show error if any items were skipped
+            isError: (skippedCount > 0));
         log('Ringkasan Impor: $importSummaryMessage');
       } else {
         _showNotification('Impor Dibatalkan', 'Pemilihan file dibatalkan.',
-            isError: true); // Changed to true for cancellation
+            isError: true);
       }
     } catch (e) {
       if (!context.mounted) return;
@@ -577,6 +509,12 @@ class _ItemListScreenState extends State<ItemListScreen> {
         TextEditingController(text: item.barcode);
     TextEditingController quantityOrRemarkController =
         TextEditingController(text: item.quantityOrRemark.toString());
+    TextEditingController expiryDateController = TextEditingController(
+      text: item.expiryDate != null
+          ? DateFormat('dd-MM-yyyy').format(item.expiryDate!)
+          : '',
+    );
+    DateTime? selectedExpiryDate = item.expiryDate;
     bool isQuantityBasedEdit = item.quantityOrRemark is int;
 
     Item? updatedItem = await showDialog<Item>(
@@ -585,23 +523,65 @@ class _ItemListScreenState extends State<ItemListScreen> {
         return StatefulBuilder(
           builder: (context, setStateSB) {
             return AlertDialog(
-              title: const Text('Edit Barang'),
+              title: const Text('Edit Barang',
+                  style: TextStyle(fontWeight: FontWeight.bold)),
+              contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
               content: SingleChildScrollView(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     TextField(
                       controller: nameController,
-                      decoration:
-                          const InputDecoration(labelText: 'Nama Barang'),
+                      decoration: const InputDecoration(
+                        labelText: 'Nama Barang',
+                        border: OutlineInputBorder(),
+                      ),
                     ),
+                    const SizedBox(height: 16),
                     TextField(
                       controller: barcodeController,
-                      decoration:
-                          const InputDecoration(labelText: 'Barcode EAN-13'),
+                      decoration: const InputDecoration(
+                        labelText: 'Barcode EAN-13',
+                        border: OutlineInputBorder(),
+                      ),
                       keyboardType: TextInputType.number,
                     ),
+                    const SizedBox(height: 16),
+                    TextFormField(
+                      controller: expiryDateController,
+                      decoration: const InputDecoration(
+                        labelText: 'Expiry Date',
+                        hintText: 'dd-MM-yyyy',
+                        border: OutlineInputBorder(),
+                        prefixIcon: Icon(Icons.calendar_today),
+                      ),
+                      readOnly: true,
+                      onTap: () async {
+                        final DateTime? pickedDate = await showDatePicker(
+                          context: context,
+                          initialDate: selectedExpiryDate ?? DateTime.now(),
+                          firstDate: DateTime.now(),
+                          lastDate: DateTime(2101),
+                        );
+                        if (pickedDate != null) {
+                          setStateSB(() {
+                            selectedExpiryDate = pickedDate;
+                            expiryDateController.text =
+                                DateFormat('dd-MM-yyyy').format(pickedDate);
+                          });
+                        }
+                      },
+                      validator: (value) {
+                        if (value == null || value.isEmpty) {
+                          return 'Expiry Date tidak boleh kosong';
+                        }
+                        return null;
+                      },
+                    ),
+                    const SizedBox(height: 16),
                     Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         const Text('Item Berbasis Kuantitas?'),
                         Switch(
@@ -614,17 +594,22 @@ class _ItemListScreenState extends State<ItemListScreen> {
                         ),
                       ],
                     ),
+                    const SizedBox(height: 16),
                     isQuantityBasedEdit
                         ? TextField(
                             controller: quantityOrRemarkController,
-                            decoration:
-                                const InputDecoration(labelText: 'Kuantitas'),
+                            decoration: const InputDecoration(
+                              labelText: 'Kuantitas',
+                              border: OutlineInputBorder(),
+                            ),
                             keyboardType: TextInputType.number,
                           )
                         : TextField(
                             controller: quantityOrRemarkController,
-                            decoration:
-                                const InputDecoration(labelText: 'Remarks'),
+                            decoration: const InputDecoration(
+                              labelText: 'Remarks',
+                              border: OutlineInputBorder(),
+                            ),
                             maxLines: 3,
                           ),
                   ],
@@ -638,28 +623,33 @@ class _ItemListScreenState extends State<ItemListScreen> {
                   },
                 ),
                 ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.blueAccent,
+                    foregroundColor: Colors.white,
+                  ),
                   child: const Text('Simpan'),
                   onPressed: () {
                     dynamic newQuantityOrRemark;
                     if (isQuantityBasedEdit) {
-                      newQuantityOrRemark =
+                      final int? newQuantity =
                           int.tryParse(quantityOrRemarkController.text.trim());
-                      if (newQuantityOrRemark == null ||
-                          newQuantityOrRemark <= 0) {
+                      if (newQuantity == null || newQuantity <= 0) {
                         _showNotification('Kuantitas Invalid',
                             'Kuantitas harus berupa angka positif.',
                             isError: true);
                         return;
                       }
+                      newQuantityOrRemark = newQuantity;
                     } else {
-                      newQuantityOrRemark =
+                      final String newRemark =
                           quantityOrRemarkController.text.trim();
-                      if (newQuantityOrRemark.isEmpty) {
+                      if (newRemark.isEmpty) {
                         _showNotification(
                             'Remarks Kosong', 'Remarks tidak boleh kosong.',
                             isError: true);
                         return;
                       }
+                      newQuantityOrRemark = newRemark;
                     }
 
                     if (nameController.text.trim().isEmpty ||
@@ -670,12 +660,20 @@ class _ItemListScreenState extends State<ItemListScreen> {
                       return;
                     }
 
+                    if (selectedExpiryDate == null) {
+                      _showNotification('Input Tidak Lengkap',
+                          'Expiry Date tidak boleh kosong.',
+                          isError: true);
+                      return;
+                    }
+
                     Navigator.of(dialogContext).pop(Item(
                       id: item.id,
                       name: nameController.text.trim(),
                       barcode: barcodeController.text.trim(),
                       quantityOrRemark: newQuantityOrRemark,
                       createdAt: item.createdAt,
+                      expiryDate: selectedExpiryDate,
                     ));
                   },
                 ),
@@ -846,6 +844,64 @@ class _ItemListScreenState extends State<ItemListScreen> {
               const Text('Daftar Barang Inventaris:',
                   style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
               const SizedBox(height: 10),
+              // Filter options for expiry date
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: [
+                    FilterChip(
+                      label: const Text('Semua Item'),
+                      selected: _expiryFilter == 'Semua Item',
+                      onSelected: (selected) {
+                        setState(() {
+                          _expiryFilter = 'Semua Item';
+                        });
+                      },
+                    ),
+                    const SizedBox(width: 8),
+                    FilterChip(
+                      label: const Text('Expiring < 1 Tahun'),
+                      selected: _expiryFilter == '1 Tahun',
+                      onSelected: (selected) {
+                        setState(() {
+                          _expiryFilter = '1 Tahun';
+                        });
+                      },
+                    ),
+                    const SizedBox(width: 8),
+                    FilterChip(
+                      label: const Text('Expiring < 6 Bulan'),
+                      selected: _expiryFilter == '6 Bulan',
+                      onSelected: (selected) {
+                        setState(() {
+                          _expiryFilter = '6 Bulan';
+                        });
+                      },
+                    ),
+                    const SizedBox(width: 8),
+                    FilterChip(
+                      label: const Text('Expiring < 5 Bulan'),
+                      selected: _expiryFilter == '5 Bulan',
+                      onSelected: (selected) {
+                        setState(() {
+                          _expiryFilter = '5 Bulan';
+                        });
+                      },
+                    ),
+                    const SizedBox(width: 8),
+                    FilterChip(
+                      label: const Text('Sudah Expired'),
+                      selected: _expiryFilter == 'Expired',
+                      onSelected: (selected) {
+                        setState(() {
+                          _expiryFilter = 'Expired';
+                        });
+                      },
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 10),
             ],
           ),
         ),
@@ -873,14 +929,58 @@ class _ItemListScreenState extends State<ItemListScreen> {
 
               List<Item> filteredItems = allItems.where((item) {
                 final String lowerCaseQuery = _searchQuery.toLowerCase();
-                return item.name.toLowerCase().contains(lowerCaseQuery) ||
-                    item.barcode.toLowerCase().contains(lowerCaseQuery);
+
+                // Filter berdasarkan pencarian
+                bool matchesSearch =
+                    item.name.toLowerCase().contains(lowerCaseQuery) ||
+                        item.barcode.toLowerCase().contains(lowerCaseQuery);
+                if (!matchesSearch) return false;
+
+                // Filter berdasarkan tanggal kedaluwarsa
+                if (_expiryFilter == 'Semua Item') {
+                  return true;
+                }
+
+                if (item.expiryDate == null) {
+                  return false; // Item tanpa expiry date tidak akan muncul di filter ini
+                }
+
+                final now = DateTime.now();
+                final difference = item.expiryDate!.difference(now);
+                final differenceInMonths = difference.inDays / 30.44;
+
+                if (_expiryFilter == '1 Tahun' &&
+                    differenceInMonths > 6 &&
+                    differenceInMonths <= 12) {
+                  return true;
+                }
+                if (_expiryFilter == '6 Bulan' &&
+                    differenceInMonths > 5 &&
+                    differenceInMonths <= 6) {
+                  return true;
+                }
+                if (_expiryFilter == '5 Bulan' &&
+                    differenceInMonths > 0 &&
+                    differenceInMonths <= 5) {
+                  return true;
+                }
+                if (_expiryFilter == 'Expired' &&
+                    item.expiryDate!.isBefore(now)) {
+                  return true;
+                }
+
+                return false;
               }).toList();
 
-              if (filteredItems.isEmpty && _searchQuery.isNotEmpty) {
-                return const Center(child: Text('Barang tidak ditemukan.'));
+              if (filteredItems.isEmpty &&
+                  (_searchQuery.isNotEmpty || _expiryFilter != 'Semua Item')) {
+                return const Center(
+                    child: Text(
+                        'Barang tidak ditemukan dengan kriteria tersebut.'));
               }
-              if (filteredItems.isEmpty && _searchQuery.isEmpty) {
+              if (filteredItems.isEmpty &&
+                  _searchQuery.isEmpty &&
+                  _expiryFilter == 'Semua Item') {
                 return const Center(
                     child: Text('Belum ada barang diinventaris.'));
               }
@@ -889,50 +989,76 @@ class _ItemListScreenState extends State<ItemListScreen> {
                 itemCount: filteredItems.length,
                 itemBuilder: (context, index) {
                   final item = filteredItems[index];
+
+                  Color cardColor = Colors.white;
+                  Color textColor = Colors.black87;
+
+                  if (item.expiryDate != null) {
+                    final now = DateTime.now();
+                    final difference = item.expiryDate!.difference(now);
+                    final differenceInMonths = difference.inDays / 30.44;
+
+                    if (item.expiryDate!.isBefore(now)) {
+                      cardColor = Colors.black87;
+                      textColor = Colors.white;
+                    } else if (differenceInMonths <= 5) {
+                      cardColor = Colors.red[200]!;
+                    } else if (differenceInMonths <= 6) {
+                      cardColor = Colors.yellow[200]!;
+                    } else if (differenceInMonths <= 12) {
+                      cardColor = Colors.green[200]!;
+                    }
+                  }
+
                   return Card(
                     margin:
                         const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                     elevation: 3,
                     shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(10)),
+                    color: cardColor,
                     child: ListTile(
                       contentPadding: const EdgeInsets.symmetric(
                           horizontal: 16, vertical: 10),
                       title: Text(
                         item.name,
-                        style: const TextStyle(
+                        style: TextStyle(
                             fontWeight: FontWeight.bold,
                             fontSize: 18,
-                            color: Colors.blueAccent),
+                            color: textColor),
                       ),
                       subtitle: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           const SizedBox(height: 4),
                           Text('Barcode: ${item.barcode}',
-                              style: const TextStyle(fontSize: 14)),
+                              style: TextStyle(fontSize: 14, color: textColor)),
                           Text(
                             item.quantityOrRemark is int
                                 ? 'Stok: ${item.quantityOrRemark}'
                                 : 'Jenis: Tidak Bisa Dihitung (Remarks: ${item.quantityOrRemark})',
-                            style: const TextStyle(fontSize: 14),
+                            style: TextStyle(fontSize: 14, color: textColor),
                           ),
-                          Text(
-                              'Ditambahkan: ${DateFormat('dd-MM-yyyy HH:mm').format(item.createdAt)}',
-                              style: const TextStyle(
-                                  fontSize: 12, color: Colors.grey)),
+                          if (item.expiryDate != null)
+                            Text(
+                              'Expiry Date: ${DateFormat('dd-MM-yyyy').format(item.expiryDate!)}',
+                              style: TextStyle(
+                                  fontSize: 12,
+                                  color: textColor,
+                                  fontWeight: FontWeight.bold),
+                            ),
                         ],
                       ),
                       trailing: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           IconButton(
-                            icon: const Icon(Icons.edit, color: Colors.blue),
+                            icon: Icon(Icons.edit, color: textColor),
                             tooltip: 'Edit Barang',
                             onPressed: () => _editItem(context, item),
                           ),
                           IconButton(
-                            icon: const Icon(Icons.delete, color: Colors.red),
+                            icon: Icon(Icons.delete, color: textColor),
                             tooltip: 'Hapus Barang',
                             onPressed: () => _deleteItem(context, item.id!),
                           ),

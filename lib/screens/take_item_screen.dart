@@ -1,12 +1,13 @@
+// Path: lib/screens/take_item_screen.dart
 import 'package:flutter/material.dart';
-import 'package:mobile_scanner/mobile_scanner.dart'; // Import mobile_scanner
-import 'dart:async'; // Untuk Timer
+import 'package:mobile_scanner/mobile_scanner.dart';
+import 'dart:async';
 import 'dart:developer';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart'; // Untuk mendapatkan user yang sedang login
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:Strata_lite/models/item.dart';
 import 'package:Strata_lite/models/log_entry.dart';
-import 'package:another_flushbar/flushbar.dart'; // Import Flushbar
+import 'package:another_flushbar/flushbar.dart';
 
 class TakeItemScreen extends StatefulWidget {
   const TakeItemScreen({super.key});
@@ -28,6 +29,7 @@ class _TakeItemScreenState extends State<TakeItemScreen> {
   Timer? _notificationTimer;
 
   Item? _scannedItem;
+  bool _isQuantityBased = true;
 
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
@@ -114,10 +116,8 @@ class _TakeItemScreenState extends State<TakeItemScreen> {
     if (capture.barcodes.isNotEmpty) {
       final Barcode detectedBarcode = capture.barcodes.first;
       final String? barcodeValue = detectedBarcode.rawValue;
-      // final Rect? boundingBox = detectedBarcode.boundingBox; // Tetap di-komen jika masih error
 
       log('Scanned barcode result: $barcodeValue (Format: ${detectedBarcode.format})');
-      // log('Barcode boundingBox: $boundingBox'); // Tetap di-komen jika masih error
 
       if (barcodeValue != null && barcodeValue.length == 13) {
         _barcodeController.text = barcodeValue;
@@ -158,6 +158,7 @@ class _TakeItemScreenState extends State<TakeItemScreen> {
         setState(() {
           _scannedItem = Item.fromFirestore(
               itemDoc.data() as Map<String, dynamic>, itemDoc.id);
+          _isQuantityBased = _scannedItem!.quantityOrRemark is int;
           _isLoading = false;
         });
         _showNotification('Item Ditemukan',
@@ -189,9 +190,9 @@ class _TakeItemScreenState extends State<TakeItemScreen> {
       return;
     }
 
-    if (_scannedItem!.quantityOrRemark is int) {
-      int quantityTaken = int.tryParse(_quantityController.text.trim()) ?? 0;
-      if (quantityTaken <= 0) {
+    if (_isQuantityBased) {
+      int? quantityTaken = int.tryParse(_quantityController.text.trim());
+      if (quantityTaken == null || quantityTaken <= 0) {
         _showNotification(
             'Kuantitas Invalid', 'Kuantitas yang diambil harus lebih dari 0.',
             isError: true);
@@ -232,7 +233,13 @@ class _TakeItemScreenState extends State<TakeItemScreen> {
         return;
       }
 
-      await _addLogEntry(_scannedItem!, quantityTaken.toString());
+      await _addLogEntry(
+        _scannedItem!,
+        quantityTaken, // Changed to pass int directly
+        remarks: _remarksController.text.trim().isEmpty
+            ? null
+            : _remarksController.text.trim(),
+      );
     } else {
       String remarks = _remarksController.text.trim();
       if (remarks.isEmpty) {
@@ -241,7 +248,8 @@ class _TakeItemScreenState extends State<TakeItemScreen> {
             isError: true);
         return;
       }
-      await _addLogEntry(_scannedItem!, 'N/A', remarks: remarks);
+      await _addLogEntry(_scannedItem!, remarks,
+          remarks: remarks); // Passed remarks to quantityOrRemark field
       _showNotification('Pengambilan Dicatat',
           'Pengambilan item "${_scannedItem!.name}" dicatat.',
           isError: false);
@@ -251,12 +259,11 @@ class _TakeItemScreenState extends State<TakeItemScreen> {
       _barcodeController.clear();
       _quantityController.clear();
       _remarksController.clear();
-      // _scannedItem = null; // Opsional: jika ingin card hilang setelah ambil
       _isLoading = false;
     });
   }
 
-  Future<void> _addLogEntry(Item item, String quantityOrRemark,
+  Future<void> _addLogEntry(Item item, dynamic quantityOrRemark,
       {String? remarks}) async {
     User? currentUser = _auth.currentUser;
     String staffName = currentUser?.email ?? 'Unknown User';
@@ -312,19 +319,16 @@ class _TakeItemScreenState extends State<TakeItemScreen> {
     return Padding(
       padding: const EdgeInsets.all(16.0),
       child: GestureDetector(
-        // <--- Tambahkan GestureDetector di sini
         onTap: () {
-          // Tutup keyboard saat mengetuk di luar field input
           FocusScope.of(context).unfocus();
         },
-        child: _isScanning // Tampilkan scanner jika _isScanning true
+        child: _isScanning
             ? Stack(
                 children: [
                   MobileScanner(
                     controller: _scannerController,
                     onDetect: _onBarcodeDetected,
-                    scanWindow:
-                        scanWindowRect, // Memberitahu scanner area fokus
+                    scanWindow: scanWindowRect,
                   ),
                   Positioned(
                     left: scanWindowRect.left,
@@ -355,7 +359,6 @@ class _TakeItemScreenState extends State<TakeItemScreen> {
                 ],
               )
             : ListView(
-                // Tampilkan form input jika _isScanning false
                 children: [
                   Text(
                     'Pengambilan Barang',
@@ -409,7 +412,7 @@ class _TakeItemScreenState extends State<TakeItemScreen> {
                       ),
                     ),
                     const SizedBox(height: 15),
-                    if (_scannedItem!.quantityOrRemark is int)
+                    if (_isQuantityBased)
                       TextField(
                         controller: _quantityController,
                         decoration: InputDecoration(
@@ -425,10 +428,13 @@ class _TakeItemScreenState extends State<TakeItemScreen> {
                         controller: _remarksController,
                         decoration: const InputDecoration(
                           labelText: 'Remarks Pengambilan',
-                          border: const OutlineInputBorder(),
+                          border: OutlineInputBorder(),
                           hintText: 'Contoh: Untuk P3K di ruang rapat',
                         ),
                         maxLines: 3,
+                        onEditingComplete: () {
+                          FocusScope.of(context).unfocus();
+                        },
                       ),
                     const SizedBox(height: 20),
                     Center(
@@ -449,7 +455,7 @@ class _TakeItemScreenState extends State<TakeItemScreen> {
                   ],
                 ],
               ),
-      ), // <--- Akhir GestureDetector
+      ),
     );
   }
 }
