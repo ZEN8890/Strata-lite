@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:mobile_scanner/mobile_scanner.dart'; // Import mobile_scanner
-import 'dart:async'; // Untuk Timer
-import 'dart:developer'; // Untuk log.log()
-import 'package:cloud_firestore/cloud_firestore.dart'; // Import Cloud Firestore
-import 'package:Strata_lite/models/item.dart'; // Import model Item
-import 'package:another_flushbar/flushbar.dart'; // Import Flushbar
+import 'package:mobile_scanner/mobile_scanner.dart';
+import 'dart:async';
+import 'dart:developer';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:Strata_lite/models/item.dart';
+import 'package:another_flushbar/flushbar.dart';
 
 class AddItemScreen extends StatefulWidget {
   const AddItemScreen({super.key});
