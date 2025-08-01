@@ -13,6 +13,7 @@ import 'package:flutter/foundation.dart';
 import 'package:another_flushbar/flushbar.dart';
 import 'dart:async';
 import 'package:intl/intl.dart';
+import 'package:share_plus/share_plus.dart';
 
 class ItemListScreen extends StatefulWidget {
   const ItemListScreen({super.key});
@@ -27,6 +28,7 @@ class _ItemListScreenState extends State<ItemListScreen> {
   String _searchQuery = '';
 
   String _expiryFilter = 'Semua Item';
+  String _stockFilter = 'Semua Item';
 
   Timer? _notificationTimer;
   bool _isLoadingExport = false;
@@ -198,14 +200,6 @@ class _ItemListScreenState extends State<ItemListScreen> {
       _isLoadingExport = true;
     });
 
-    bool hasPermission = await _requestStoragePermission(context);
-    if (!hasPermission) {
-      setState(() {
-        _isLoadingExport = false;
-      });
-      return;
-    }
-
     try {
       var excel = Excel.createExcel();
       String defaultSheetName = excel.getDefaultSheet()!;
@@ -218,7 +212,7 @@ class _ItemListScreenState extends State<ItemListScreen> {
       sheetObject.appendRow([
         TextCellValue('Nama Barang'),
         TextCellValue('Barcode'),
-        TextCellValue('Kuantitas/Remarks'), // Reverted to original name
+        TextCellValue('Kuantitas/Remarks'),
         TextCellValue('Tanggal Ditambahkan'),
         TextCellValue('Expiry Date')
       ]);
@@ -238,8 +232,7 @@ class _ItemListScreenState extends State<ItemListScreen> {
         sheetObject.appendRow([
           TextCellValue(item.name),
           TextCellValue(item.barcode),
-          TextCellValue(
-              item.quantityOrRemark.toString()), // Reverted to dynamic property
+          TextCellValue(item.quantityOrRemark.toString()),
           TextCellValue(formattedDate),
           TextCellValue(formattedExpiryDate)
         ]);
@@ -254,25 +247,47 @@ class _ItemListScreenState extends State<ItemListScreen> {
       if (fileBytes != null) {
         final String fileName =
             'Daftar_Barang_Strata_Lite_${DateTime.now().millisecondsSinceEpoch}.xlsx';
-        final String? resultPath = await FilePicker.platform.saveFile(
-          fileName: fileName,
-          type: FileType.custom,
-          allowedExtensions: ['xlsx'],
-        );
 
-        if (!context.mounted) return;
+        if (defaultTargetPlatform == TargetPlatform.windows ||
+            defaultTargetPlatform == TargetPlatform.macOS ||
+            defaultTargetPlatform == TargetPlatform.linux) {
+          // Logika untuk platform desktop
+          final String? resultPath = await FilePicker.platform.saveFile(
+            fileName: fileName,
+            type: FileType.custom,
+            allowedExtensions: ['xlsx'],
+          );
 
-        if (resultPath != null) {
-          final File file = File(resultPath);
-          await file.writeAsBytes(fileBytes);
-          _showNotification(
-              'Ekspor Berhasil', 'Data berhasil diekspor ke: $resultPath',
-              isError: false);
-          log('File Excel berhasil diekspor ke: $resultPath');
+          if (!context.mounted) return;
+
+          if (resultPath != null) {
+            final File file = File(resultPath);
+            await file.writeAsBytes(fileBytes);
+            _showNotification(
+                'Ekspor Berhasil', 'Data berhasil diekspor ke: $resultPath',
+                isError: false);
+            log('File Excel berhasil diekspor ke: $resultPath');
+          } else {
+            _showNotification('Ekspor Dibatalkan',
+                'Ekspor dibatalkan atau file tidak disimpan.',
+                isError: true);
+          }
         } else {
-          _showNotification('Ekspor Dibatalkan',
-              'Ekspor dibatalkan atau file tidak disimpan.',
-              isError: true);
+          // Logika untuk platform mobile (Android & iOS)
+          final directory = await getApplicationDocumentsDirectory();
+          final filePath = '${directory.path}/$fileName';
+          final file = File(filePath);
+          await file.writeAsBytes(fileBytes, flush: true);
+
+          // Gunakan share_plus untuk membagikan file dan memunculkan pilihan aplikasi
+          await Share.shareXFiles([XFile(filePath)],
+              text: 'Data inventaris Strata Lite');
+
+          if (!context.mounted) return;
+          _showNotification('Ekspor Berhasil',
+              'Data berhasil diekspor. Pilih aplikasi untuk menyimpan file.',
+              isError: false);
+          log('File Excel berhasil diekspor dan akan dibagikan: $filePath');
         }
       } else {
         if (!context.mounted) return;
@@ -844,17 +859,33 @@ class _ItemListScreenState extends State<ItemListScreen> {
               const Text('Daftar Barang Inventaris:',
                   style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
               const SizedBox(height: 10),
-              // Filter options for expiry date
+              // Filter options for expiry date and stock
               SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
                 child: Row(
                   children: [
                     FilterChip(
                       label: const Text('Semua Item'),
-                      selected: _expiryFilter == 'Semua Item',
+                      selected: _expiryFilter == 'Semua Item' &&
+                          _stockFilter == 'Semua Item',
                       onSelected: (selected) {
                         setState(() {
                           _expiryFilter = 'Semua Item';
+                          _stockFilter = 'Semua Item';
+                        });
+                      },
+                    ),
+                    const SizedBox(width: 8),
+                    FilterChip(
+                      label: const Text('Stok Habis'),
+                      selected: _stockFilter == 'Stok Habis',
+                      onSelected: (selected) {
+                        setState(() {
+                          _stockFilter = selected ? 'Stok Habis' : 'Semua Item';
+                          if (selected) {
+                            _expiryFilter =
+                                'Semua Item'; // Reset expiry filter when stock filter is active
+                          }
                         });
                       },
                     ),
@@ -864,7 +895,11 @@ class _ItemListScreenState extends State<ItemListScreen> {
                       selected: _expiryFilter == '1 Tahun',
                       onSelected: (selected) {
                         setState(() {
-                          _expiryFilter = '1 Tahun';
+                          _expiryFilter = selected ? '1 Tahun' : 'Semua Item';
+                          if (selected) {
+                            _stockFilter =
+                                'Semua Item'; // Reset stock filter when expiry filter is active
+                          }
                         });
                       },
                     ),
@@ -874,7 +909,11 @@ class _ItemListScreenState extends State<ItemListScreen> {
                       selected: _expiryFilter == '6 Bulan',
                       onSelected: (selected) {
                         setState(() {
-                          _expiryFilter = '6 Bulan';
+                          _expiryFilter = selected ? '6 Bulan' : 'Semua Item';
+                          if (selected) {
+                            _stockFilter =
+                                'Semua Item'; // Reset stock filter when expiry filter is active
+                          }
                         });
                       },
                     ),
@@ -884,7 +923,11 @@ class _ItemListScreenState extends State<ItemListScreen> {
                       selected: _expiryFilter == '5 Bulan',
                       onSelected: (selected) {
                         setState(() {
-                          _expiryFilter = '5 Bulan';
+                          _expiryFilter = selected ? '5 Bulan' : 'Semua Item';
+                          if (selected) {
+                            _stockFilter =
+                                'Semua Item'; // Reset stock filter when expiry filter is active
+                          }
                         });
                       },
                     ),
@@ -894,7 +937,11 @@ class _ItemListScreenState extends State<ItemListScreen> {
                       selected: _expiryFilter == 'Expired',
                       onSelected: (selected) {
                         setState(() {
-                          _expiryFilter = 'Expired';
+                          _expiryFilter = selected ? 'Expired' : 'Semua Item';
+                          if (selected) {
+                            _stockFilter =
+                                'Semua Item'; // Reset stock filter when expiry filter is active
+                          }
                         });
                       },
                     ),
@@ -936,6 +983,12 @@ class _ItemListScreenState extends State<ItemListScreen> {
                         item.barcode.toLowerCase().contains(lowerCaseQuery);
                 if (!matchesSearch) return false;
 
+                // Filter berdasarkan stok
+                if (_stockFilter == 'Stok Habis') {
+                  return item.quantityOrRemark is int &&
+                      item.quantityOrRemark == 0;
+                }
+
                 // Filter berdasarkan tanggal kedaluwarsa
                 if (_expiryFilter == 'Semua Item') {
                   return true;
@@ -973,14 +1026,17 @@ class _ItemListScreenState extends State<ItemListScreen> {
               }).toList();
 
               if (filteredItems.isEmpty &&
-                  (_searchQuery.isNotEmpty || _expiryFilter != 'Semua Item')) {
+                  (_searchQuery.isNotEmpty ||
+                      _expiryFilter != 'Semua Item' ||
+                      _stockFilter != 'Semua Item')) {
                 return const Center(
                     child: Text(
                         'Barang tidak ditemukan dengan kriteria tersebut.'));
               }
               if (filteredItems.isEmpty &&
                   _searchQuery.isEmpty &&
-                  _expiryFilter == 'Semua Item') {
+                  _expiryFilter == 'Semua Item' &&
+                  _stockFilter == 'Semua Item') {
                 return const Center(
                     child: Text('Belum ada barang diinventaris.'));
               }
@@ -993,7 +1049,11 @@ class _ItemListScreenState extends State<ItemListScreen> {
                   Color cardColor = Colors.white;
                   Color textColor = Colors.black87;
 
-                  if (item.expiryDate != null) {
+                  if (item.quantityOrRemark is int &&
+                      item.quantityOrRemark == 0) {
+                    cardColor = Colors.grey[400]!;
+                    textColor = Colors.white;
+                  } else if (item.expiryDate != null) {
                     final now = DateTime.now();
                     final difference = item.expiryDate!.difference(now);
                     final differenceInMonths = difference.inDays / 30.44;
