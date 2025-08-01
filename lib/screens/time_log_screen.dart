@@ -14,6 +14,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/foundation.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:share_plus/share_plus.dart';
 
 class TimeLogScreen extends StatefulWidget {
   const TimeLogScreen({super.key});
@@ -334,14 +335,6 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
       _isLoadingExport = true;
     });
 
-    bool hasPermission = await _requestStoragePermission(context);
-    if (!hasPermission) {
-      setState(() {
-        _isLoadingExport = false;
-      });
-      return;
-    }
-
     try {
       var excel = Excel.createExcel();
       String defaultSheetName = excel.getDefaultSheet()!;
@@ -457,25 +450,46 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
       if (fileBytes != null) {
         final String fileName =
             'Log_Pengambilan_Strata_Lite_${DateTime.now().millisecondsSinceEpoch}.xlsx';
-        final String? resultPath = await FilePicker.platform.saveFile(
-          fileName: fileName,
-          type: FileType.custom,
-          allowedExtensions: ['xlsx'],
-        );
 
-        if (!context.mounted) return;
+        if (defaultTargetPlatform == TargetPlatform.windows ||
+            defaultTargetPlatform == TargetPlatform.macOS ||
+            defaultTargetPlatform == TargetPlatform.linux) {
+          // Logic for desktop platforms
+          final String? resultPath = await FilePicker.platform.saveFile(
+            fileName: fileName,
+            type: FileType.custom,
+            allowedExtensions: ['xlsx'],
+          );
 
-        if (resultPath != null) {
-          final File file = File(resultPath);
-          await file.writeAsBytes(fileBytes);
-          _showNotification(
-              'Ekspor Berhasil', 'Data berhasil diekspor ke: $resultPath',
-              isError: false);
-          log('File Excel berhasil diekspor ke: $resultPath');
+          if (!context.mounted) return;
+
+          if (resultPath != null) {
+            final File file = File(resultPath);
+            await file.writeAsBytes(fileBytes);
+            _showNotification(
+                'Ekspor Berhasil', 'Data berhasil diekspor ke: $resultPath',
+                isError: false);
+            log('File Excel berhasil diekspor ke: $resultPath');
+          } else {
+            _showNotification(
+                'Ekspor Dibatalkan', 'Ekspor dibatalkan oleh pengguna.',
+                isError: true);
+          }
         } else {
-          _showNotification('Ekspor Dibatalkan',
-              'Ekspor dibatalkan atau file tidak disimpan.',
-              isError: true);
+          // Logic for mobile platforms (Android & iOS)
+          final directory = await getApplicationDocumentsDirectory();
+          final filePath = '${directory.path}/$fileName';
+          final file = File(filePath);
+          await file.writeAsBytes(fileBytes, flush: true);
+
+          await Share.shareXFiles([XFile(filePath)],
+              text: 'Data log Strata Lite');
+
+          if (!context.mounted) return;
+          _showNotification('Ekspor Berhasil',
+              'Data berhasil diekspor ke aplikasi pengelola file.',
+              isError: false);
+          log('File Excel berhasil diekspor dan akan dibagikan: $filePath');
         }
       } else {
         if (!context.mounted) return;
@@ -609,6 +623,7 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
         headerSliverBuilder: (BuildContext context, bool innerBoxIsScrolled) {
           return <Widget>[
             SliverAppBar(
+              automaticallyImplyLeading: false, // Perbaikan di sini
               expandedHeight: _filterSectionHeight > 0
                   ? _filterSectionHeight + 20.0
                   : 450.0,
@@ -1139,9 +1154,14 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
                                       final remainingStock =
                                           itemData['quantityOrRemark'];
                                       String stockText = '';
+                                      Color stockColor = Colors.green[800]!;
+
                                       if (remainingStock is int) {
                                         stockText =
                                             'Sisa Stok: $remainingStock';
+                                        if (remainingStock == 0) {
+                                          stockColor = Colors.red;
+                                        }
                                       } else {
                                         stockText =
                                             'Jenis Item: Tidak Bisa Dihitung';
@@ -1158,7 +1178,7 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
                                             Text(stockText,
                                                 style: TextStyle(
                                                     fontSize: 16,
-                                                    color: Colors.green[800],
+                                                    color: stockColor,
                                                     fontWeight:
                                                         FontWeight.bold)),
                                           ],
@@ -1227,6 +1247,7 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
                                                   fontStyle: FontStyle.italic,
                                                   fontSize: 15,
                                                   color: Colors.blueGrey[600]),
+                                              overflow: TextOverflow.visible,
                                             ),
                                           ),
                                         ],

@@ -48,6 +48,7 @@ class _TakeItemScreenState extends State<TakeItemScreen> {
     _barcodeController.dispose();
     _quantityController.dispose();
     _remarksController.dispose();
+    _scannerController?.stop(); // Ensure scanner is stopped
     _scannerController?.dispose();
     _alertTimer?.cancel();
     _notificationTimer?.cancel();
@@ -235,7 +236,7 @@ class _TakeItemScreenState extends State<TakeItemScreen> {
 
       await _addLogEntry(
         _scannedItem!,
-        quantityTaken, // Changed to pass int directly
+        quantityTaken,
         remarks: _remarksController.text.trim().isEmpty
             ? null
             : _remarksController.text.trim(),
@@ -248,8 +249,7 @@ class _TakeItemScreenState extends State<TakeItemScreen> {
             isError: true);
         return;
       }
-      await _addLogEntry(_scannedItem!, remarks,
-          remarks: remarks); // Passed remarks to quantityOrRemark field
+      await _addLogEntry(_scannedItem!, remarks, remarks: remarks);
       _showNotification('Pengambilan Dicatat',
           'Pengambilan item "${_scannedItem!.name}" dicatat.',
           isError: false);
@@ -260,6 +260,7 @@ class _TakeItemScreenState extends State<TakeItemScreen> {
       _quantityController.clear();
       _remarksController.clear();
       _isLoading = false;
+      _scannedItem = null;
     });
   }
 
@@ -422,6 +423,10 @@ class _TakeItemScreenState extends State<TakeItemScreen> {
                               'Stok tersedia: ${_scannedItem!.quantityOrRemark}',
                         ),
                         keyboardType: TextInputType.number,
+                        textInputAction: TextInputAction.done,
+                        onSubmitted: (value) {
+                          FocusScope.of(context).unfocus();
+                        },
                       )
                     else
                       TextField(
@@ -432,8 +437,10 @@ class _TakeItemScreenState extends State<TakeItemScreen> {
                           hintText: 'Contoh: Untuk P3K di ruang rapat',
                         ),
                         maxLines: 3,
-                        onEditingComplete: () {
-                          FocusScope.of(context).unfocus();
+                        textInputAction:
+                            TextInputAction.done, // Tambahan di sini
+                        onSubmitted: (value) {
+                          FocusScope.of(context).unfocus(); // Tambahan di sini
                         },
                       ),
                     const SizedBox(height: 20),
