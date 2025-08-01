@@ -12,6 +12,7 @@ import 'dart:io';
 import 'package:path_provider/path_provider.dart' as path_provider;
 import 'dart:typed_data';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:flutter/scheduler.dart';
 
 class UsersScreen extends StatefulWidget {
   const UsersScreen({super.key});
@@ -255,21 +256,20 @@ class _UsersScreenState extends State<UsersScreen> {
                         : null,
                   ),
                   const SizedBox(height: 10),
-                  TextFormField(
-                    controller: adminPasswordController,
-                    decoration: const InputDecoration(
-                      labelText: 'Sandi Admin Anda',
-                      border: OutlineInputBorder(),
-                      isDense: true,
-                      contentPadding:
-                          EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                    ),
-                    obscureText: true,
-                    validator: (value) => value!.isEmpty
-                        ? 'Sandi admin tidak boleh kosong.'
-                        : null,
-                  ),
                 ],
+                TextFormField(
+                  controller: adminPasswordController,
+                  decoration: const InputDecoration(
+                    labelText: 'Sandi Admin Anda',
+                    border: OutlineInputBorder(),
+                    isDense: true,
+                    contentPadding:
+                        EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  ),
+                  obscureText: true,
+                  validator: (value) =>
+                      value!.isEmpty ? 'Sandi admin tidak boleh kosong.' : null,
+                ),
               ],
             ),
           ),
@@ -295,13 +295,16 @@ class _UsersScreenState extends State<UsersScreen> {
                   return;
                 }
 
-                // Store dialog context and admin credentials before any async operation
                 final localDialogContext = dialogContext;
                 final String? currentAdminEmail = _auth.currentUser!.email;
                 final String currentAdminPassword =
                     adminPasswordController.text.trim();
 
                 try {
+                  await _auth.signInWithEmailAndPassword(
+                      email: currentAdminEmail!,
+                      password: currentAdminPassword);
+
                   if (isEditing) {
                     await _firestore
                         .collection('users')
@@ -312,17 +315,18 @@ class _UsersScreenState extends State<UsersScreen> {
                       'department': selectedDepartment,
                       'role': selectedRole,
                     });
+                    if (localDialogContext.mounted) {
+                      Navigator.of(localDialogContext).pop();
+                    }
                     _showNotification('Berhasil!',
                         'Pengguna ${nameController.text} berhasil diperbarui.',
                         isError: false);
                   } else {
-                    // Create new user (this will switch the current auth session)
                     final newUserCredential =
                         await _auth.createUserWithEmailAndPassword(
                             email: emailController.text.trim(),
                             password: passwordController.text.trim());
 
-                    // Add user data to Firestore
                     await _firestore
                         .collection('users')
                         .doc(newUserCredential.user!.uid)
@@ -335,42 +339,40 @@ class _UsersScreenState extends State<UsersScreen> {
                       'createdAt': FieldValue.serverTimestamp(),
                     });
 
-                    // We now close the dialog first to prevent the crash
-                    if (localDialogContext.mounted) {
-                      Navigator.of(localDialogContext).pop();
-                    }
-
-                    // Then, we sign back in as the admin, after the dialog is closed
                     await _auth.signInWithEmailAndPassword(
                         email: currentAdminEmail!,
                         password: currentAdminPassword);
 
+                    if (localDialogContext.mounted) {
+                      Navigator.of(localDialogContext).pop();
+                    }
                     _showNotification('Akun Berhasil Dibuat!',
                         'Pengguna ${nameController.text} berhasil ditambahkan.',
                         isError: false);
                   }
-
-                  // For editing, close the dialog only after the Firestore update is done
-                  if (isEditing && localDialogContext.mounted) {
-                    Navigator.of(localDialogContext).pop();
-                  }
                 } on FirebaseAuthException catch (e) {
                   String message;
-                  if (e.code == 'email-already-in-use') {
+                  if (e.code == 'wrong-password' ||
+                      e.code == 'invalid-credential') {
+                    message = 'Sandi admin salah.';
+                  } else if (e.code == 'email-already-in-use') {
                     message = 'Email ini sudah terdaftar.';
                   } else if (e.code == 'weak-password') {
                     message = 'Password terlalu lemah.';
-                  } else if (e.code == 'wrong-password' ||
-                      e.code == 'invalid-credential') {
-                    message = 'Sandi admin salah.';
                   } else {
-                    message = 'Gagal membuat akun: ${e.message}';
+                    message = 'Gagal memproses akun: ${e.message}';
+                  }
+                  if (localDialogContext.mounted) {
+                    Navigator.of(localDialogContext).pop();
                   }
                   _showNotification('Gagal!', message, isError: true);
                 } catch (e) {
                   _showNotification('Error', 'Terjadi kesalahan umum: $e',
                       isError: true);
                   log('Error in add/edit user flow: $e');
+                  if (localDialogContext.mounted) {
+                    Navigator.of(localDialogContext).pop();
+                  }
                 }
               }
             },
