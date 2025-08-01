@@ -32,7 +32,7 @@ class _UsersScreenState extends State<UsersScreen> {
   final List<String> _departments = [
     'Marketing',
     'Sales',
-    'HRD',
+    'HR',
     'Finance',
     'FO',
     'FBS',

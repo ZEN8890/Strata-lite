@@ -35,7 +35,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   final List<String> _departments = [
     'Marketing',
     'Sales', // New
-    'HRD',
+    'HR',
     'Finance', // New
     'FO', // New
     'FBS', // New
