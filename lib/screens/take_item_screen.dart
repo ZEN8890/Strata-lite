@@ -225,7 +225,7 @@ class _TakeItemScreenState extends State<TakeItemScreen> {
         });
 
         _showNotification('Stok Berhasil Dikurangi',
-            'Stok item "${_scannedItem!.name}" dikurangi sebanyak $quantityTaken. Stok baru: ${_scannedItem!.quantityOrRemark}',
+            'Stok item "${_scannedItem!.name}" dikurangi sebanyak $quantityTaken. Sisa Stok: ${_scannedItem!.quantityOrRemark}',
             isError: false);
       } catch (e) {
         _showNotification('Gagal Mengurangi Stok', 'Gagal mengurangi stok: $e',
