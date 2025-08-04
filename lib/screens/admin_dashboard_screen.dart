@@ -8,6 +8,7 @@ import 'package:Strata_lite/screens/users_screen.dart'; // <--- Import UsersScre
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'dart:developer';
+import 'dart:async'; // <--- Tambahkan import ini untuk StreamSubscription
 
 // Import the LoginScreen to navigate to it correctly
 import 'package:Strata_lite/screens/login_screen.dart';
@@ -30,6 +31,9 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
+  // Deklarasikan StreamSubscription untuk mendengarkan perubahan data pengguna
+  StreamSubscription<DocumentSnapshot>? _userSubscription;
+
   final List<Widget> _pages = [
     const ItemListScreen(),
     const AddItemScreen(),
@@ -43,15 +47,18 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   @override
   void initState() {
     super.initState();
-    _loadDrawerUserData();
+    // Ganti _loadDrawerUserData() dengan _subscribeToUserData()
+    _subscribeToUserData();
   }
 
-  Future<void> _loadDrawerUserData() async {
-    if (!mounted) return;
-    setState(() {
-      _isDrawerLoading = true;
-    });
+  // Penting: Batalkan subscription saat widget dihapus untuk mencegah memory leak
+  @override
+  void dispose() {
+    _userSubscription?.cancel();
+    super.dispose();
+  }
 
+  Future<void> _subscribeToUserData() async {
     User? currentUser = _auth.currentUser;
 
     if (currentUser == null) {
@@ -66,44 +73,41 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       return;
     }
 
-    if (!mounted) return;
-    setState(() {
-      _drawerUserEmail = currentUser.email ?? 'Email Tidak Tersedia';
-    });
+    // Batalkan subscription yang lama jika ada
+    _userSubscription?.cancel();
 
-    try {
-      DocumentSnapshot userDoc =
-          await _firestore.collection('users').doc(currentUser.uid).get();
+    _userSubscription = _firestore
+        .collection('users')
+        .doc(currentUser.uid)
+        .snapshots() // Menggunakan snapshots() untuk mendapatkan stream
+        .listen((userDoc) {
       if (!mounted) return;
+      setState(() {
+        _isDrawerLoading = false;
+        _drawerUserEmail = currentUser.email ?? 'Email Tidak Tersedia';
 
-      if (userDoc.exists) {
-        Map<String, dynamic> userData = userDoc.data() as Map<String, dynamic>;
-        setState(() {
+        if (userDoc.exists) {
+          Map<String, dynamic> userData =
+              userDoc.data() as Map<String, dynamic>;
           _drawerUserName =
               userData['name'] ?? currentUser.email ?? 'Nama Tidak Ditemukan';
           _drawerUserDepartment =
               userData['department'] ?? 'Departemen Tidak Ditemukan';
-        });
-      } else {
-        setState(() {
+        } else {
           _drawerUserName = currentUser.email ?? 'Nama Tidak Ditemukan';
           _drawerUserDepartment = 'Data Profil Tidak Lengkap';
-        });
-        log('Warning: User document not found in Firestore for UID: ${currentUser.uid}');
-      }
-    } catch (e) {
+          log('Warning: User document not found in Firestore for UID: ${currentUser.uid}');
+        }
+      });
+    }, onError: (e) {
       log('Error loading drawer user data from Firestore: $e');
       if (!mounted) return;
       setState(() {
+        _isDrawerLoading = false;
         _drawerUserName = currentUser.email ?? 'Error Memuat Nama';
         _drawerUserDepartment = 'Error Memuat Departemen';
       });
-    } finally {
-      if (!mounted) return;
-      setState(() {
-        _isDrawerLoading = false;
-      });
-    }
+    });
   }
 
   void _onItemTapped(int index) {

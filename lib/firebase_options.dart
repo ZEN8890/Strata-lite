@@ -44,39 +44,40 @@ class DefaultFirebaseOptions {
   }
 
   static const FirebaseOptions web = FirebaseOptions(
-    apiKey: 'AIzaSyCNHqFMUQjN-tui_EmbfcCgiQu_oKCxEKM',
-    appId: '1:411847394283:web:a4cf85d856aa07999f8fae',
-    messagingSenderId: '411847394283',
-    projectId: 'strata-mini',
-    authDomain: 'strata-mini.firebaseapp.com',
-    storageBucket: 'strata-mini.firebasestorage.app',
-    measurementId: 'G-VZYECC0K6N',
+    apiKey: 'AIzaSyB5p9y6WjS8PP-TkXtbfuFF3heYQNCYhFM',
+    appId: '1:225299067038:web:138227d9addbd8bc65cb8f',
+    messagingSenderId: '225299067038',
+    projectId: 'strata-lite',
+    authDomain: 'strata-lite.firebaseapp.com',
+    storageBucket: 'strata-lite.firebasestorage.app',
+    measurementId: 'G-NNP85WXMEB',
   );
 
   static const FirebaseOptions android = FirebaseOptions(
-    apiKey: 'AIzaSyBC1_8_5mcv7uvk_TKaZ_I-IEk-GaVusgc',
-    appId: '1:411847394283:android:d155d2f5b7ee95ea9f8fae',
-    messagingSenderId: '411847394283',
-    projectId: 'strata-mini',
-    storageBucket: 'strata-mini.firebasestorage.app',
+    apiKey: 'AIzaSyD1MQfa-QEu7aO_7UDU4BU6uf6V2ETJDB0',
+    appId: '1:225299067038:android:e49fb67a12e7bbdf65cb8f',
+    messagingSenderId: '225299067038',
+    projectId: 'strata-lite',
+    storageBucket: 'strata-lite.firebasestorage.app',
   );
 
   static const FirebaseOptions ios = FirebaseOptions(
-    apiKey: 'AIzaSyCSkBvvUOrsgn9s1owHOIsJgLJjEhia8nc',
-    appId: '1:411847394283:ios:03188c88d583876c9f8fae',
-    messagingSenderId: '411847394283',
-    projectId: 'strata-mini',
-    storageBucket: 'strata-mini.firebasestorage.app',
+    apiKey: 'AIzaSyBxCwXwri1Hm0yAgpesADuS3K97qtpOwHI',
+    appId: '1:225299067038:ios:83aa999695bdbf0d65cb8f',
+    messagingSenderId: '225299067038',
+    projectId: 'strata-lite',
+    storageBucket: 'strata-lite.firebasestorage.app',
     iosBundleId: 'com.example.projekStrataMini',
   );
 
   static const FirebaseOptions windows = FirebaseOptions(
-    apiKey: 'AIzaSyCNHqFMUQjN-tui_EmbfcCgiQu_oKCxEKM',
-    appId: '1:411847394283:web:392c9c96da723e3a9f8fae',
-    messagingSenderId: '411847394283',
-    projectId: 'strata-mini',
-    authDomain: 'strata-mini.firebaseapp.com',
-    storageBucket: 'strata-mini.firebasestorage.app',
-    measurementId: 'G-2V0TMHCK8X',
+    apiKey: 'AIzaSyB5p9y6WjS8PP-TkXtbfuFF3heYQNCYhFM',
+    appId: '1:225299067038:web:0fbda7e7ad92258365cb8f',
+    messagingSenderId: '225299067038',
+    projectId: 'strata-lite',
+    authDomain: 'strata-lite.firebaseapp.com',
+    storageBucket: 'strata-lite.firebasestorage.app',
+    measurementId: 'G-J02YMXSVY7',
   );
+
 }
