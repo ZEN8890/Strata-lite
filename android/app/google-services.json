@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "225299067038",
+    "project_id": "strata-lite",
+    "storage_bucket": "strata-lite.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:225299067038:android:e49fb67a12e7bbdf65cb8f",
+        "android_client_info": {
+          "package_name": "com.example.projek_strata_mini"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD1MQfa-QEu7aO_7UDU4BU6uf6V2ETJDB0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
