@@ -123,7 +123,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         _phoneController.text = userData['phoneNumber'] ?? '';
         _selectedDepartment =
             userData['department']; // Set departemen yang dipilih
-        log('User data loaded: Name=${_nameController.text}, Email=${_emailController.text}, Department=${_selectedDepartment}, Phone=${_phoneController.text}');
+        log('User data loaded: Name=${_nameController.text}, Email=${_emailController.text}, Department=$_selectedDepartment, Phone=${_phoneController.text}');
       } else {
         // Jika dokumen user tidak ada, set nilai default
         _nameController.text = 'Nama Tidak Ditemukan';

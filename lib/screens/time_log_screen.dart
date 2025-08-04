@@ -934,9 +934,9 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
         body: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16.0),
-              child: const Text(
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 16.0),
+              child: Text(
                 'Riwayat Pengambilan Barang:',
                 style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
               ),
@@ -1023,8 +1023,9 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
 
                       if (_selectedDepartment != null &&
                           _selectedDepartment != 'Semua Departemen') {
-                        if (logEntry.staffDepartment != _selectedDepartment)
+                        if (logEntry.staffDepartment != _selectedDepartment) {
                           return false;
+                        }
                       }
 
                       return true;

@@ -26,7 +26,7 @@ class _UsersScreenState extends State<UsersScreen> {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFunctions _functions = FirebaseFunctions.instance;
 
-  TextEditingController _searchController = TextEditingController();
+  final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
 
   Timer? _notificationTimer;
@@ -108,26 +108,26 @@ class _UsersScreenState extends State<UsersScreen> {
 
   Future<void> _addEditUser({DocumentSnapshot? userToEdit}) async {
     final bool isEditing = userToEdit != null;
-    final _formKey = GlobalKey<FormState>();
+    final formKey = GlobalKey<FormState>();
 
     TextEditingController nameController = TextEditingController(
         text: isEditing
-            ? (userToEdit!.data() as Map<String, dynamic>)['name']
+            ? (userToEdit.data() as Map<String, dynamic>)['name']
             : '');
     TextEditingController emailController = TextEditingController(
         text: isEditing
-            ? (userToEdit!.data() as Map<String, dynamic>)['email']
+            ? (userToEdit.data() as Map<String, dynamic>)['email']
             : '');
     TextEditingController phoneController = TextEditingController(
         text: isEditing
-            ? (userToEdit!.data() as Map<String, dynamic>)['phoneNumber']
+            ? (userToEdit.data() as Map<String, dynamic>)['phoneNumber']
             : '');
     TextEditingController passwordController = TextEditingController();
     String? selectedDepartment = isEditing
-        ? (userToEdit!.data() as Map<String, dynamic>)['department']
+        ? (userToEdit.data() as Map<String, dynamic>)['department']
         : _departments.first;
     String? selectedRole = isEditing
-        ? (userToEdit!.data() as Map<String, dynamic>)['role']
+        ? (userToEdit.data() as Map<String, dynamic>)['role']
         : _roles.first;
 
     if (!isEditing && !_departments.contains(selectedDepartment)) {
@@ -155,7 +155,7 @@ class _UsersScreenState extends State<UsersScreen> {
             const EdgeInsets.symmetric(horizontal: 20.0, vertical: 10.0),
         content: SingleChildScrollView(
           child: Form(
-            key: _formKey,
+            key: formKey,
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -185,8 +185,9 @@ class _UsersScreenState extends State<UsersScreen> {
                   readOnly: isEditing,
                   validator: (value) {
                     if (value!.isEmpty) return 'Email tidak boleh kosong';
-                    if (!value.contains('@') || !value.contains('.'))
+                    if (!value.contains('@') || !value.contains('.')) {
                       return 'Format email tidak valid';
+                    }
                     return null;
                   },
                 ),
@@ -281,7 +282,7 @@ class _UsersScreenState extends State<UsersScreen> {
           ),
           ElevatedButton(
             onPressed: () async {
-              if (_formKey.currentState!.validate()) {
+              if (formKey.currentState!.validate()) {
                 if (selectedDepartment == null || selectedDepartment!.isEmpty) {
                   _showNotification(
                       'Validasi Gagal', 'Departemen tidak boleh kosong.',
@@ -308,7 +309,7 @@ class _UsersScreenState extends State<UsersScreen> {
                   if (isEditing) {
                     await _firestore
                         .collection('users')
-                        .doc(userToEdit!.id)
+                        .doc(userToEdit.id)
                         .update({
                       'name': nameController.text.trim(),
                       'phoneNumber': phoneController.text.trim(),
@@ -340,7 +341,7 @@ class _UsersScreenState extends State<UsersScreen> {
                     });
 
                     await _auth.signInWithEmailAndPassword(
-                        email: currentAdminEmail!,
+                        email: currentAdminEmail,
                         password: currentAdminPassword);
 
                     if (localDialogContext.mounted) {
@@ -446,7 +447,7 @@ class _UsersScreenState extends State<UsersScreen> {
         final userData = usersData[i].data();
         String phoneNumber = userData['phoneNumber']?.toString() ?? '';
         if (phoneNumber.startsWith('0')) {
-          phoneNumber = "'" + phoneNumber;
+          phoneNumber = "'$phoneNumber";
         }
 
         List<dynamic> row = [
@@ -605,17 +606,17 @@ class _UsersScreenState extends State<UsersScreen> {
             await _auth.signInWithEmailAndPassword(
                 email: currentAdminEmail!, password: adminPassword);
           } on FirebaseAuthException catch (e) {
-            log('Gagal mengimpor ${email} (Auth Error): ${e.message}');
+            log('Gagal mengimpor $email (Auth Error): ${e.message}');
             failedCount++;
           } catch (e) {
-            log('Gagal mengimpor ${email} (General Error): $e');
+            log('Gagal mengimpor $email (General Error): $e');
             failedCount++;
           }
         }
       }
 
       String importSummaryMessage =
-          '${importedCount} pengguna berhasil diimpor. ${failedCount} pengguna gagal diimpor.';
+          '$importedCount pengguna berhasil diimpor. $failedCount pengguna gagal diimpor.';
 
       _showNotification(
         'Impor Selesai!',
@@ -783,11 +784,10 @@ class _UsersScreenState extends State<UsersScreen> {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Expanded(
+              const Expanded(
                 child: Text(
                   'Daftar Pengguna Terdaftar:',
-                  style: const TextStyle(
-                      fontWeight: FontWeight.bold, fontSize: 18),
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
                   overflow: TextOverflow.ellipsis,
                   maxLines: 1,
                 ),
@@ -928,7 +928,7 @@ class _UsersScreenState extends State<UsersScreen> {
                         ],
                       ),
                       onTap: () {
-                        log('Detail user ${name} diklik');
+                        log('Detail user $name diklik');
                       },
                     ),
                   );

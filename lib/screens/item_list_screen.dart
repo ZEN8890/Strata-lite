@@ -24,7 +24,7 @@ class ItemListScreen extends StatefulWidget {
 
 class _ItemListScreenState extends State<ItemListScreen> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  TextEditingController _searchController = TextEditingController();
+  final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
 
   String _expiryFilter = 'Semua Item';
@@ -346,16 +346,6 @@ class _ItemListScreenState extends State<ItemListScreen> {
           orElse: () => excel.tables.keys.first,
         );
 
-        if (sheetName == null) {
-          _showNotification('Impor Gagal',
-              'File Excel tidak memiliki sheet yang dapat dibaca.',
-              isError: true);
-          setState(() {
-            _isLoadingImport = false;
-          });
-          return;
-        }
-
         Sheet table = excel.tables[sheetName]!;
 
         final headerRow = table.rows.isNotEmpty
@@ -453,7 +443,7 @@ class _ItemListScreenState extends State<ItemListScreen> {
               'expiryDate': expiryDate,
             });
             updatedCount++;
-            log('Item updated: ${name} with barcode ${barcode}');
+            log('Item updated: $name with barcode $barcode');
           } else {
             batch.set(
                 _firestore.collection('items').doc(),
@@ -465,7 +455,7 @@ class _ItemListScreenState extends State<ItemListScreen> {
                   expiryDate: expiryDate,
                 ).toFirestore());
             importedCount++;
-            log('Item imported: ${name} with barcode ${barcode}');
+            log('Item imported: $name with barcode $barcode');
           }
         }
 
@@ -480,18 +470,18 @@ class _ItemListScreenState extends State<ItemListScreen> {
 
         String importSummaryMessage = '';
         if (importedCount > 0) {
-          importSummaryMessage +=
-              '${importedCount} item baru berhasil diimpor.';
+          importSummaryMessage += '$importedCount item baru berhasil diimpor.';
         }
         if (updatedCount > 0) {
           if (importedCount > 0) importSummaryMessage += '\n';
-          importSummaryMessage += '${updatedCount} item berhasil diperbarui.';
+          importSummaryMessage += '$updatedCount item berhasil diperbarui.';
         }
         if (skippedCount > 0) {
-          if (importedCount > 0 || updatedCount > 0)
+          if (importedCount > 0 || updatedCount > 0) {
             importSummaryMessage += '\n';
+          }
           importSummaryMessage +=
-              '${skippedCount} baris dilewati karena data tidak valid.';
+              '$skippedCount baris dilewati karena data tidak valid.';
         }
         if (importedCount == 0 && updatedCount == 0 && skippedCount == 0) {
           importSummaryMessage =

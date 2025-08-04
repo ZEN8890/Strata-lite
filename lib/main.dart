@@ -15,18 +15,18 @@ void main() async {
     options: DefaultFirebaseOptions.currentPlatform,
   );
 
-  final FirebaseAuth _auth = FirebaseAuth.instance;
-  final FirebaseFirestore _firestore =
+  final FirebaseAuth auth = FirebaseAuth.instance;
+  final FirebaseFirestore firestore =
       FirebaseFirestore.instance; // <--- Instance Firestore
 
   String initialRoute;
-  User? currentUser = _auth.currentUser;
+  User? currentUser = auth.currentUser;
 
   if (currentUser != null) {
     // Ambil role pengguna dari Firestore
     try {
       DocumentSnapshot userDoc =
-          await _firestore.collection('users').doc(currentUser.uid).get();
+          await firestore.collection('users').doc(currentUser.uid).get();
       if (userDoc.exists) {
         String role = (userDoc.data() as Map<String, dynamic>)['role'] ??
             'staff'; // Default ke staff jika role tidak ada
