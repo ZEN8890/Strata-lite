@@ -354,6 +354,9 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
         TextCellValue('Remarks Pengambilan'),
       ]);
 
+      // Perhatikan: Kueri di sini hanya untuk mengambil semua data,
+      // filter dilakukan di sisi klien. Ini menghindari kebutuhan indeks kompleks
+      // untuk ekspor, tetapi mungkin tidak efisien untuk dataset yang sangat besar.
       QuerySnapshot snapshot = await _firestore
           .collection('log_entries')
           .orderBy('timestamp', descending: true)
@@ -599,6 +602,7 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
   Widget build(BuildContext context) {
     Query<Map<String, dynamic>> query = _firestore.collection('log_entries');
 
+    // Filter berdasarkan tanggal
     if (_selectedStartDate != null) {
       DateTime startOfDay = DateTime(_selectedStartDate!.year,
           _selectedStartDate!.month, _selectedStartDate!.day);
@@ -610,11 +614,13 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
       query = query.where('timestamp', isLessThanOrEqualTo: endOfDay);
     }
 
+    // Filter berdasarkan departemen
     if (_selectedDepartment != null &&
         _selectedDepartment != 'Semua Departemen') {
       query = query.where('staffDepartment', isEqualTo: _selectedDepartment);
     }
 
+    // Urutkan berdasarkan timestamp
     query = query.orderBy('timestamp', descending: true);
 
     return Scaffold(
@@ -982,6 +988,7 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
 
                       if (!matchesSearch) return false;
 
+                      // Filter waktu (di sisi klien)
                       if (_selectedStartTime != null) {
                         DateTime logTime = logEntry.timestamp;
                         TimeOfDay entryTime = TimeOfDay(
@@ -1006,6 +1013,9 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
                           return false;
                         }
                       }
+                      // Filter tanggal (di sisi klien) - meskipun sudah ada di kueri Firestore,
+                      // ini berfungsi sebagai fallback atau penyesuaian lebih lanjut.
+                      // Namun, kueri Firestore sudah menangani ini.
                       if (_selectedStartDate != null) {
                         DateTime logDate = DateTime(logEntry.timestamp.year,
                             logEntry.timestamp.month, logEntry.timestamp.day);
@@ -1021,6 +1031,9 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
                         if (logDate.isAfter(endDate)) return false;
                       }
 
+                      // Filter departemen (di sisi klien) - meskipun sudah ada di kueri Firestore,
+                      // ini berfungsi sebagai fallback atau penyesuaian lebih lanjut.
+                      // Namun, kueri Firestore sudah menangani ini.
                       if (_selectedDepartment != null &&
                           _selectedDepartment != 'Semua Departemen') {
                         if (logEntry.staffDepartment != _selectedDepartment) {

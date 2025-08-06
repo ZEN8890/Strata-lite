@@ -137,13 +137,7 @@ class _StaffDashboardScreenState extends State<StaffDashboardScreen> {
       appBar: AppBar(
         title: const Text(
             'Dashboard Staff Strata Lite'), // Judul AppBar untuk staff
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.logout),
-            tooltip: 'Logout',
-            onPressed: _confirmLogout,
-          ),
-        ],
+        // Bagian 'actions' dihilangkan untuk menghapus ikon logout
       ),
       drawer: Drawer(
         child: ListView(
