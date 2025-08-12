@@ -3,7 +3,6 @@ import 'package:firebase_auth/firebase_auth.dart'; // Untuk mendapatkan user yan
 import 'package:cloud_firestore/cloud_firestore.dart'; // Untuk mengambil data user dari Firestore
 import 'dart:developer'; // Untuk log.log()
 import 'package:another_flushbar/flushbar.dart'; // Untuk notifikasi
-
 // Import the LoginScreen to navigate to it
 import 'package:Strata_lite/screens/login_screen.dart';
 
