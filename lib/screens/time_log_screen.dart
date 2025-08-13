@@ -2,7 +2,6 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:Strata_lite/models/log_entry.dart';
-import 'package:Strata_lite/models/item.dart';
 import 'dart:developer';
 import 'package:intl/intl.dart';
 import 'dart:async';

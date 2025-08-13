@@ -254,6 +254,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           children: [
                             TextField(
                               controller: _nameController,
+                              // == PERUBAHAN DI SINI ==
+                              readOnly: true,
                               decoration: const InputDecoration(
                                 labelText: 'Nama Lengkap',
                                 border: OutlineInputBorder(),
@@ -274,6 +276,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             const SizedBox(height: 15),
                             TextField(
                               controller: _phoneController,
+                              // == PERUBAHAN DI SINI ==
+                              readOnly: false,
                               decoration: const InputDecoration(
                                 labelText: 'Nomor Telepon',
                                 border: OutlineInputBorder(),
@@ -285,6 +289,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             DropdownButtonFormField<String>(
                               value:
                                   _selectedDepartment, // Gunakan _selectedDepartment
+                              // == PERUBAHAN DI SINI ==
+                              onChanged: null,
                               decoration: const InputDecoration(
                                 labelText: 'Departemen',
                                 border: OutlineInputBorder(),
@@ -296,12 +302,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                   child: Text(department),
                                 );
                               }).toList(),
-                              onChanged: (String? newValue) {
-                                setState(() {
-                                  _selectedDepartment = newValue;
-                                });
-                              },
-                              // Tambahkan validator jika departemen wajib diisi
                               validator: (value) {
                                 if (value == null || value.isEmpty) {
                                   return 'Departemen tidak boleh kosong';
