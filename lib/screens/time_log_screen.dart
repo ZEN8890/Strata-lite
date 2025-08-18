@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:Strata_lite/models/log_entry.dart';
+import 'package:Strata_lite/models/item.dart';
 import 'dart:developer';
 import 'package:intl/intl.dart';
 import 'dart:async';
@@ -353,9 +354,6 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
         TextCellValue('Remarks Pengambilan'),
       ]);
 
-      // Perhatikan: Kueri di sini hanya untuk mengambil semua data,
-      // filter dilakukan di sisi klien. Ini menghindari kebutuhan indeks kompleks
-      // untuk ekspor, tetapi mungkin tidak efisien untuk dataset yang sangat besar.
       QuerySnapshot snapshot = await _firestore
           .collection('log_entries')
           .orderBy('timestamp', descending: true)
@@ -601,7 +599,6 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
   Widget build(BuildContext context) {
     Query<Map<String, dynamic>> query = _firestore.collection('log_entries');
 
-    // Filter berdasarkan tanggal
     if (_selectedStartDate != null) {
       DateTime startOfDay = DateTime(_selectedStartDate!.year,
           _selectedStartDate!.month, _selectedStartDate!.day);
@@ -613,13 +610,11 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
       query = query.where('timestamp', isLessThanOrEqualTo: endOfDay);
     }
 
-    // Filter berdasarkan departemen
     if (_selectedDepartment != null &&
         _selectedDepartment != 'Semua Departemen') {
       query = query.where('staffDepartment', isEqualTo: _selectedDepartment);
     }
 
-    // Urutkan berdasarkan timestamp
     query = query.orderBy('timestamp', descending: true);
 
     return Scaffold(
@@ -628,7 +623,7 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
         headerSliverBuilder: (BuildContext context, bool innerBoxIsScrolled) {
           return <Widget>[
             SliverAppBar(
-              automaticallyImplyLeading: false, // Perbaikan di sini
+              automaticallyImplyLeading: false,
               expandedHeight: _filterSectionHeight > 0
                   ? _filterSectionHeight + 20.0
                   : 450.0,
@@ -939,9 +934,9 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
         body: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 16.0),
-              child: Text(
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16.0),
+              child: const Text(
                 'Riwayat Pengambilan Barang:',
                 style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
               ),
@@ -987,7 +982,6 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
 
                       if (!matchesSearch) return false;
 
-                      // Filter waktu (di sisi klien)
                       if (_selectedStartTime != null) {
                         DateTime logTime = logEntry.timestamp;
                         TimeOfDay entryTime = TimeOfDay(
@@ -1012,9 +1006,6 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
                           return false;
                         }
                       }
-                      // Filter tanggal (di sisi klien) - meskipun sudah ada di kueri Firestore,
-                      // ini berfungsi sebagai fallback atau penyesuaian lebih lanjut.
-                      // Namun, kueri Firestore sudah menangani ini.
                       if (_selectedStartDate != null) {
                         DateTime logDate = DateTime(logEntry.timestamp.year,
                             logEntry.timestamp.month, logEntry.timestamp.day);
@@ -1030,14 +1021,10 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
                         if (logDate.isAfter(endDate)) return false;
                       }
 
-                      // Filter departemen (di sisi klien) - meskipun sudah ada di kueri Firestore,
-                      // ini berfungsi sebagai fallback atau penyesuaian lebih lanjut.
-                      // Namun, kueri Firestore sudah menangani ini.
                       if (_selectedDepartment != null &&
                           _selectedDepartment != 'Semua Departemen') {
-                        if (logEntry.staffDepartment != _selectedDepartment) {
+                        if (logEntry.staffDepartment != _selectedDepartment)
                           return false;
-                        }
                       }
 
                       return true;
@@ -1072,6 +1059,18 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
                         String formattedDateTime =
                             '${DateFormat('dd-MM-yyyy').format(logEntry.timestamp)} '
                             '${DateFormat('HH:mm:ss').format(logEntry.timestamp)}';
+
+                        String stockText;
+                        Color stockColor;
+                        if (logEntry.remainingStock != null) {
+                          stockText = 'Sisa Stok: ${logEntry.remainingStock}';
+                          stockColor = (logEntry.remainingStock == 0)
+                              ? Colors.red
+                              : Colors.green[800]!;
+                        } else {
+                          stockText = 'Jenis Item: Tidak Bisa Dihitung';
+                          stockColor = Colors.blueGrey;
+                        }
 
                         return Card(
                           margin: const EdgeInsets.symmetric(
@@ -1133,79 +1132,20 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
                                   ],
                                 ),
                                 const SizedBox(height: 6),
-                                FutureBuilder<QuerySnapshot>(
-                                  future: _firestore
-                                      .collection('items')
-                                      .where('barcode',
-                                          isEqualTo: logEntry.barcode)
-                                      .limit(1)
-                                      .get(),
-                                  builder: (context, itemSnapshot) {
-                                    if (itemSnapshot.connectionState ==
-                                        ConnectionState.waiting) {
-                                      return const Padding(
-                                        padding:
-                                            EdgeInsets.symmetric(vertical: 4.0),
-                                        child: SizedBox(
-                                          width: 120,
-                                          height: 16,
-                                          child: LinearProgressIndicator(),
-                                        ),
-                                      );
-                                    }
-                                    if (itemSnapshot.hasError) {
-                                      log('Error fetching item for barcode ${logEntry.barcode}: ${itemSnapshot.error}');
-                                      return const Text('Sisa Stok: Error',
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 4.0),
+                                  child: Row(
+                                    children: [
+                                      const Icon(Icons.inventory_2,
+                                          size: 20, color: Colors.blueGrey),
+                                      const SizedBox(width: 10),
+                                      Text(stockText,
                                           style: TextStyle(
-                                              fontSize: 14, color: Colors.red));
-                                    }
-                                    if (itemSnapshot.hasData &&
-                                        itemSnapshot.data!.docs.isNotEmpty) {
-                                      final itemData =
-                                          itemSnapshot.data!.docs.first.data()
-                                              as Map<String, dynamic>;
-                                      final remainingStock =
-                                          itemData['quantityOrRemark'];
-                                      String stockText = '';
-                                      Color stockColor = Colors.green[800]!;
-
-                                      if (remainingStock is int) {
-                                        stockText =
-                                            'Sisa Stok: $remainingStock';
-                                        if (remainingStock == 0) {
-                                          stockColor = Colors.red;
-                                        }
-                                      } else {
-                                        stockText =
-                                            'Jenis Item: Tidak Bisa Dihitung';
-                                      }
-                                      return Padding(
-                                        padding:
-                                            const EdgeInsets.only(top: 4.0),
-                                        child: Row(
-                                          children: [
-                                            const Icon(Icons.inventory_2,
-                                                size: 20,
-                                                color: Colors.blueGrey),
-                                            const SizedBox(width: 10),
-                                            Text(stockText,
-                                                style: TextStyle(
-                                                    fontSize: 16,
-                                                    color: stockColor,
-                                                    fontWeight:
-                                                        FontWeight.bold)),
-                                          ],
-                                        ),
-                                      );
-                                    }
-                                    return const Padding(
-                                      padding: EdgeInsets.only(top: 4.0),
-                                      child: Text('Sisa Stok: Tidak Ditemukan',
-                                          style: TextStyle(
-                                              fontSize: 14,
-                                              color: Colors.orange)),
-                                    );
-                                  },
+                                              fontSize: 16,
+                                              color: stockColor,
+                                              fontWeight: FontWeight.bold)),
+                                    ],
+                                  ),
                                 ),
                                 const SizedBox(height: 6),
                                 Row(
