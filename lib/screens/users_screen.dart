@@ -363,6 +363,9 @@ class _UsersScreenState extends State<UsersScreen> {
                       : usernameController.text.trim() + _fictitiousDomain;
                   final String newPassword = newPasswordController.text.trim();
 
+                  // Pop the dialog immediately after validation to avoid the `_debugLocked` error.
+                  Navigator.of(localDialogContext).pop();
+
                   try {
                     // Otentikasi admin
                     await _auth.signInWithEmailAndPassword(
@@ -392,7 +395,6 @@ class _UsersScreenState extends State<UsersScreen> {
                         });
                       }
 
-                      Navigator.of(localDialogContext).pop();
                       _showNotification('Berhasil!',
                           'Pengguna ${nameController.text} berhasil diperbarui.',
                           isError: false);
@@ -414,12 +416,6 @@ class _UsersScreenState extends State<UsersScreen> {
                         'createdAt': FieldValue.serverTimestamp(),
                       });
 
-                      // Re-autentikasi kembali admin
-                      await _auth.signInWithEmailAndPassword(
-                          email: currentAdminEmail,
-                          password: currentAdminPassword);
-
-                      Navigator.of(localDialogContext).pop();
                       _showNotification('Akun Berhasil Dibuat!',
                           'Pengguna ${nameController.text} berhasil ditambahkan.',
                           isError: false);
@@ -436,17 +432,11 @@ class _UsersScreenState extends State<UsersScreen> {
                     } else {
                       message = 'Gagal memproses akun: ${e.message}';
                     }
-                    if (localDialogContext.mounted) {
-                      Navigator.of(localDialogContext).pop();
-                    }
                     _showNotification('Gagal!', message, isError: true);
                   } catch (e) {
                     _showNotification('Error', 'Terjadi kesalahan umum: $e',
                         isError: true);
                     log('Error in add/edit user flow: $e');
-                    if (localDialogContext.mounted) {
-                      Navigator.of(localDialogContext).pop();
-                    }
                   }
                 },
                 child: Text(isEditing ? 'Simpan Perubahan' : 'Tambah Pengguna'),
@@ -675,6 +665,11 @@ class _UsersScreenState extends State<UsersScreen> {
           }
 
           try {
+            // Re-authenticate the admin before creating new users.
+            // This is a security measure.
+            await _auth.signInWithEmailAndPassword(
+                email: currentAdminEmail!, password: adminPassword);
+
             final newUserCredential =
                 await _auth.createUserWithEmailAndPassword(
                     email: email, password: password);
@@ -691,9 +686,6 @@ class _UsersScreenState extends State<UsersScreen> {
               'createdAt': FieldValue.serverTimestamp(),
             });
             importedCount++;
-
-            await _auth.signInWithEmailAndPassword(
-                email: currentAdminEmail!, password: adminPassword);
           } on FirebaseAuthException catch (e) {
             log('Gagal mengimpor $email (Auth Error): ${e.message}');
             failedCount++;
