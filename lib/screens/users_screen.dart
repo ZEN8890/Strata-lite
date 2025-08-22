@@ -4,11 +4,12 @@ import 'dart:developer';
 import 'package:another_flushbar/flushbar.dart';
 import 'dart:async';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_functions/cloud_functions.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:excel/excel.dart';
 import 'dart:io';
 import 'dart:typed_data';
+import 'package:permission_handler/permission_handler.dart';
+import 'package:device_info_plus/device_info_plus.dart';
 
 class UsersScreen extends StatefulWidget {
   const UsersScreen({super.key});
@@ -20,7 +21,6 @@ class UsersScreen extends StatefulWidget {
 class _UsersScreenState extends State<UsersScreen> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
-  final FirebaseFunctions _functions = FirebaseFunctions.instance;
 
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
@@ -112,26 +112,26 @@ class _UsersScreenState extends State<UsersScreen> {
 
     TextEditingController nameController = TextEditingController(
         text: isEditing
-            ? (userToEdit.data() as Map<String, dynamic>)['name']
+            ? (userToEdit!.data() as Map<String, dynamic>)['name']
             : '');
     TextEditingController usernameController = TextEditingController(
         text: isEditing
-            ? (userToEdit.data() as Map<String, dynamic>)['email']
+            ? (userToEdit!.data() as Map<String, dynamic>)['email']
                 .toString()
                 .split('@')[0]
             : '');
     TextEditingController phoneController = TextEditingController(
         text: isEditing
-            ? (userToEdit.data() as Map<String, dynamic>)['phoneNumber']
+            ? (userToEdit!.data() as Map<String, dynamic>)['phoneNumber']
             : '');
     TextEditingController newPasswordController = TextEditingController();
     TextEditingController adminPasswordController = TextEditingController();
 
     String? selectedDepartment = isEditing
-        ? (userToEdit.data() as Map<String, dynamic>)['department']
+        ? (userToEdit!.data() as Map<String, dynamic>)['department']
         : _departments.first;
     String? selectedRole = isEditing
-        ? (userToEdit.data() as Map<String, dynamic>)['role']
+        ? (userToEdit!.data() as Map<String, dynamic>)['role']
         : _roles.first;
 
     bool _obscureNewPassword = true;
@@ -191,8 +191,9 @@ class _UsersScreenState extends State<UsersScreen> {
                       ),
                       readOnly: isEditing,
                       validator: (value) {
-                        if (value!.isEmpty)
+                        if (value!.isEmpty) {
                           return 'Username tidak boleh kosong';
+                        }
                         if (!isEditing && value.contains('@')) {
                           return 'Username tidak boleh mengandung "@"';
                         }
@@ -237,10 +238,10 @@ class _UsersScreenState extends State<UsersScreen> {
                       value: selectedRole,
                       decoration: const InputDecoration(
                         labelText: 'Role',
-                        border: OutlineInputBorder(),
+                        border: const OutlineInputBorder(),
                         isDense: true,
-                        contentPadding:
-                            EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                        contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 10),
                       ),
                       items: _roles
                           .map((role) => DropdownMenuItem(
@@ -253,38 +254,7 @@ class _UsersScreenState extends State<UsersScreen> {
                           value == null || value.isEmpty ? 'Pilih role' : null,
                     ),
                     const SizedBox(height: 10),
-                    if (isEditing) ...[
-                      TextFormField(
-                        controller: newPasswordController,
-                        decoration: InputDecoration(
-                          labelText: 'Sandi Baru (kosongkan jika tidak diubah)',
-                          border: const OutlineInputBorder(),
-                          isDense: true,
-                          contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 12, vertical: 10),
-                          suffixIcon: IconButton(
-                            icon: Icon(
-                              _obscureNewPassword
-                                  ? Icons.visibility
-                                  : Icons.visibility_off,
-                            ),
-                            onPressed: () {
-                              setStateSB(() {
-                                _obscureNewPassword = !_obscureNewPassword;
-                              });
-                            },
-                          ),
-                        ),
-                        obscureText: _obscureNewPassword,
-                        validator: (value) {
-                          if (value!.isNotEmpty && value.length < 6) {
-                            return 'Password minimal 6 karakter';
-                          }
-                          return null;
-                        },
-                      ),
-                      const SizedBox(height: 10),
-                    ] else ...[
+                    if (!isEditing) ...[
                       TextFormField(
                         controller: newPasswordController,
                         decoration: InputDecoration(
@@ -363,7 +333,6 @@ class _UsersScreenState extends State<UsersScreen> {
                       : usernameController.text.trim() + _fictitiousDomain;
                   final String newPassword = newPasswordController.text.trim();
 
-                  // Pop the dialog immediately after validation to avoid the `_debugLocked` error.
                   Navigator.of(localDialogContext).pop();
 
                   try {
@@ -376,24 +345,13 @@ class _UsersScreenState extends State<UsersScreen> {
                       // Perbarui data Firestore
                       await _firestore
                           .collection('users')
-                          .doc(userToEdit.id)
+                          .doc(userToEdit!.id)
                           .update({
                         'name': nameController.text.trim(),
                         'phoneNumber': phoneController.text.trim(),
                         'department': selectedDepartment,
                         'role': selectedRole,
                       });
-
-                      // Perbarui sandi jika sandi baru diisi
-                      if (newPassword.isNotEmpty) {
-                        // Panggil Cloud Function untuk mereset sandi
-                        final HttpsCallable callable =
-                            _functions.httpsCallable('updateUserPassword');
-                        await callable.call({
-                          'uid': userToEdit.id,
-                          'password': newPassword,
-                        });
-                      }
 
                       _showNotification('Berhasil!',
                           'Pengguna ${nameController.text} berhasil diperbarui.',
@@ -440,6 +398,117 @@ class _UsersScreenState extends State<UsersScreen> {
                   }
                 },
                 child: Text(isEditing ? 'Simpan Perubahan' : 'Tambah Pengguna'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  Future<void> _sendPasswordResetEmail(String userEmail) async {
+    TextEditingController emailController =
+        TextEditingController(text: userEmail);
+    TextEditingController adminPasswordController = TextEditingController();
+    bool _obscureAdminPassword = true;
+
+    await showDialog(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setStateSB) {
+          return AlertDialog(
+            title: const Text('Kirim Tautan Reset Sandi'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text('Masukkan email tujuan tautan reset sandi:'),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: emailController,
+                  decoration: const InputDecoration(
+                    labelText: 'Email Tujuan',
+                    border: OutlineInputBorder(),
+                  ),
+                  keyboardType: TextInputType.emailAddress,
+                ),
+                const SizedBox(height: 10),
+                TextFormField(
+                  controller: adminPasswordController,
+                  decoration: InputDecoration(
+                    labelText: 'Sandi Admin Anda',
+                    border: const OutlineInputBorder(),
+                    suffixIcon: IconButton(
+                      icon: Icon(
+                        _obscureAdminPassword
+                            ? Icons.visibility
+                            : Icons.visibility_off,
+                      ),
+                      onPressed: () {
+                        setStateSB(() {
+                          _obscureAdminPassword = !_obscureAdminPassword;
+                        });
+                      },
+                    ),
+                  ),
+                  obscureText: _obscureAdminPassword,
+                  validator: (value) =>
+                      value!.isEmpty ? 'Sandi admin tidak boleh kosong.' : null,
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(),
+                child: const Text('Batal'),
+              ),
+              ElevatedButton(
+                onPressed: () async {
+                  final adminPassword = adminPasswordController.text.trim();
+
+                  if (adminPassword.isEmpty) {
+                    _showNotification(
+                        'Gagal!', 'Sandi admin tidak boleh kosong.',
+                        isError: true);
+                    return;
+                  }
+
+                  try {
+                    log('DEBUG: Mencoba otentikasi ulang admin.');
+                    await _auth.signInWithEmailAndPassword(
+                        email: _auth.currentUser!.email!,
+                        password: adminPassword);
+                    log('DEBUG: Otentikasi admin berhasil. Mencoba mengirim email reset sandi.');
+
+                    await _auth.sendPasswordResetEmail(
+                        email: emailController.text.trim());
+                    log('DEBUG: Permintaan pengiriman email berhasil dikirim.');
+
+                    _showNotification('Berhasil!',
+                        'Tautan reset sandi telah dikirim ke ${emailController.text}.',
+                        isError: false);
+
+                    emailController.clear();
+                    Navigator.of(dialogContext).pop();
+                  } on FirebaseAuthException catch (e) {
+                    String message;
+                    if (e.code == 'wrong-password' ||
+                        e.code == 'invalid-credential') {
+                      message = 'Sandi admin salah.';
+                    } else if (e.code == 'user-not-found' ||
+                        e.code == 'invalid-email') {
+                      message = 'Email tidak valid atau tidak terdaftar.';
+                    } else {
+                      message = 'Gagal mengirim email reset: ${e.message}';
+                    }
+                    _showNotification('Gagal!', message, isError: true);
+                    log('DEBUG: Terjadi FirebaseAuthException: ${e.code} - ${e.message}');
+                  } catch (e) {
+                    _showNotification('Error', 'Terjadi kesalahan umum: $e',
+                        isError: true);
+                    log('DEBUG: Terjadi kesalahan umum saat mengirim email reset sandi: $e');
+                  }
+                },
+                child: const Text('Kirim Tautan'),
               ),
             ],
           );
@@ -496,219 +565,316 @@ class _UsersScreenState extends State<UsersScreen> {
   }
 
   Future<void> _exportUsersToExcel() async {
-    try {
-      final querySnapshot = await _firestore.collection('users').get();
-      final usersData = querySnapshot.docs;
+    await _handleStoragePermission(() async {
+      try {
+        final querySnapshot = await _firestore.collection('users').get();
+        final usersData = querySnapshot.docs;
 
-      if (usersData.isEmpty) {
-        _showNotification('Info', 'Tidak ada pengguna untuk diekspor.',
-            isError: false);
-        return;
-      }
-
-      final excel = Excel.createExcel();
-      final defaultSheetName = excel.getDefaultSheet()!;
-      excel.rename(defaultSheetName, 'Daftar Pengguna');
-      final sheet = excel['Daftar Pengguna'];
-
-      List<String> headers = [
-        'Nama Lengkap',
-        'Username',
-        'Email Lengkap',
-        'Nomor Telepon',
-        'Departemen',
-        'Role'
-      ];
-      sheet.insertRowIterables(
-          headers.map((e) => TextCellValue(e)).toList(), 0);
-
-      for (int i = 0; i < usersData.length; i++) {
-        final userData = usersData[i].data();
-        String phoneNumber = userData['phoneNumber']?.toString() ?? '';
-        String email = userData['email'] ?? '';
-        String username = email.split('@')[0];
-
-        if (phoneNumber.startsWith('0')) {
-          phoneNumber = "'$phoneNumber";
+        if (usersData.isEmpty) {
+          _showNotification('Info', 'Tidak ada pengguna untuk diekspor.',
+              isError: false);
+          return;
         }
 
-        List<dynamic> row = [
-          userData['name'] ?? '',
-          username,
-          email,
-          phoneNumber,
-          userData['department'] ?? '',
-          userData['role'] ?? '',
+        final excel = Excel.createExcel();
+        final defaultSheetName = excel.getDefaultSheet()!;
+        excel.rename(defaultSheetName, 'Daftar Pengguna');
+        final sheet = excel['Daftar Pengguna'];
+
+        List<String> headers = [
+          'Nama Lengkap',
+          'Username',
+          'Email Lengkap',
+          'Nomor Telepon',
+          'Departemen',
+          'Role'
         ];
         sheet.insertRowIterables(
-            row.map((e) => TextCellValue(e.toString())).toList(), i + 1);
-      }
+            headers.map((e) => TextCellValue(e)).toList(), 0);
 
-      final excelBytes = excel.encode()!;
+        for (int i = 0; i < usersData.length; i++) {
+          final userData = usersData[i].data();
+          String phoneNumber = userData['phoneNumber']?.toString() ?? '';
+          String email = userData['email'] ?? '';
+          String username = email.split('@')[0];
 
-      final String? resultPath = await FilePicker.platform.saveFile(
-        fileName: 'Daftar_Pengguna_Strata.xlsx',
-        type: FileType.custom,
-        allowedExtensions: ['xlsx'],
-      );
+          if (phoneNumber.startsWith('0')) {
+            phoneNumber = "'$phoneNumber";
+          }
 
-      if (!mounted) return;
+          List<dynamic> row = [
+            userData['name'] ?? '',
+            username,
+            email,
+            phoneNumber,
+            userData['department'] ?? '',
+            userData['role'] ?? '',
+          ];
+          sheet.insertRowIterables(
+              row.map((e) => TextCellValue(e.toString())).toList(), i + 1);
+        }
 
-      if (resultPath != null) {
-        final File file = File(resultPath);
-        await file.writeAsBytes(Uint8List.fromList(excelBytes));
-        _showNotification('Berhasil!',
-            'Daftar pengguna berhasil diekspor ke Excel di: $resultPath',
-            isError: false);
-        log('File Excel berhasil diekspor ke: $resultPath');
-      } else {
+        final excelBytes = excel.encode()!;
+        log('DEBUG: Data Excel berhasil dibuat.');
+
+        final String? resultPath = await FilePicker.platform.saveFile(
+          fileName: 'Daftar_Pengguna_Strata.xlsx',
+          type: FileType.custom,
+          allowedExtensions: ['xlsx'],
+        );
+        log('DEBUG: FilePicker resultPath: $resultPath');
+
+        if (!mounted) return;
+
+        if (resultPath != null) {
+          final File file = File(resultPath);
+          await file.writeAsBytes(Uint8List.fromList(excelBytes));
+          _showNotification('Berhasil!',
+              'Daftar pengguna berhasil diekspor ke Excel di: $resultPath',
+              isError: false);
+          log('File Excel berhasil diekspor ke: $resultPath');
+        } else {
+          _showNotification('Ekspor Dibatalkan',
+              'Ekspor dibatalkan atau file tidak disimpan.',
+              isError: true);
+        }
+      } catch (e) {
         _showNotification(
-            'Ekspor Dibatalkan', 'Ekspor dibatalkan atau file tidak disimpan.',
+            'Gagal Export', 'Terjadi kesalahan saat mengekspor data: $e',
             isError: true);
+        log('Error exporting users: $e');
       }
-    } catch (e) {
-      _showNotification(
-          'Gagal Export', 'Terjadi kesalahan saat mengekspor data: $e',
-          isError: true);
-      log('Error exporting users: $e');
-    }
+    });
   }
 
   Future<void> _importUsersFromExcel() async {
-    try {
-      FilePickerResult? result = await FilePicker.platform.pickFiles(
-        type: FileType.custom,
-        allowedExtensions: ['xlsx'],
-      );
+    await _handleStoragePermission(() async {
+      try {
+        FilePickerResult? result = await FilePicker.platform.pickFiles(
+          type: FileType.custom,
+          allowedExtensions: ['xlsx'],
+        );
+        log('DEBUG: FilePicker result: $result');
 
-      if (result == null || result.files.single.path == null) {
+        if (result == null || result.files.single.path == null) {
+          _showNotification(
+              'Impor Dibatalkan', 'Tidak ada file yang dipilih untuk diimpor.',
+              isError: true);
+          return;
+        }
+
+        File file = File(result.files.single.path!);
+        var bytes = file.readAsBytesSync();
+        var excel = Excel.decodeBytes(bytes);
+
+        int importedCount = 0;
+        int failedCount = 0;
+
+        for (var table in excel.tables.keys) {
+          var sheet = excel.tables[table];
+          if (sheet == null || sheet.rows.isEmpty) continue;
+
+          final headerRow = sheet.rows.first
+              .map((cell) => cell?.value?.toString().trim())
+              .toList();
+
+          final nameIndex = headerRow.indexOf('Nama Lengkap');
+          final usernameIndex = headerRow.indexOf('Username');
+          final phoneIndex = headerRow.indexOf('Nomor Telepon');
+          final departmentIndex = headerRow.indexOf('Departemen');
+          final roleIndex = headerRow.indexOf('Role');
+          final passwordIndex = headerRow.indexOf('Password');
+
+          if (nameIndex == -1 ||
+              usernameIndex == -1 ||
+              departmentIndex == -1 ||
+              roleIndex == -1 ||
+              passwordIndex == -1) {
+            _showNotification('Gagal Import',
+                'File Excel tidak memiliki semua kolom yang diperlukan (Nama Lengkap, Username, Nomor Telepon, Departemen, Role, Password).',
+                isError: true);
+            return;
+          }
+
+          String? adminPassword = await _showAdminPasswordDialog();
+          if (adminPassword == null) {
+            _showNotification(
+                'Impor Dibatalkan', 'Sandi admin tidak dimasukkan.',
+                isError: true);
+            return;
+          }
+          final currentAdminEmail = _auth.currentUser!.email;
+
+          for (int i = 1; i < sheet.rows.length; i++) {
+            final row = sheet.rows[i];
+            final String name =
+                (row[nameIndex]?.value?.toString().trim() ?? '');
+            final String username =
+                (row[usernameIndex]?.value?.toString().trim() ?? '');
+            final String email = username + _fictitiousDomain;
+            final String phoneNumber =
+                (row[phoneIndex]?.value?.toString().trim() ?? '');
+            String role = (row[roleIndex]?.value?.toString().trim() ?? 'staff')
+                .toLowerCase();
+            final String password =
+                (row[passwordIndex]?.value?.toString().trim() ?? '');
+            final String department =
+                (row[departmentIndex]?.value?.toString().trim() ?? '');
+
+            if (name.isEmpty || username.isEmpty || password.isEmpty) {
+              log('Skipping row $i: Nama, Username, atau Password kosong.');
+              failedCount++;
+              continue;
+            }
+            if (password.length < 6) {
+              log('Skipping row $i: Password kurang dari 6 karakter.');
+              failedCount++;
+              continue;
+            }
+
+            if (!_roles.contains(role)) {
+              role = 'staff';
+            }
+            if (!_departments.contains(department)) {
+              log('Skipping row $i: Departemen tidak valid.');
+              failedCount++;
+              continue;
+            }
+
+            try {
+              // Re-authenticate the admin before creating new users.
+              await _auth.signInWithEmailAndPassword(
+                  email: currentAdminEmail!, password: adminPassword);
+
+              final newUserCredential =
+                  await _auth.createUserWithEmailAndPassword(
+                      email: email, password: password);
+
+              await _firestore
+                  .collection('users')
+                  .doc(newUserCredential.user!.uid)
+                  .set({
+                'name': name,
+                'email': email,
+                'phoneNumber': phoneNumber,
+                'department': department,
+                'role': role,
+                'createdAt': FieldValue.serverTimestamp(),
+              });
+              importedCount++;
+            } on FirebaseAuthException catch (e) {
+              log('Gagal mengimpor $email (Auth Error): ${e.message}');
+              failedCount++;
+            } catch (e) {
+              log('Gagal mengimpor $email (General Error): $e');
+              failedCount++;
+            }
+          }
+        }
+
+        String importSummaryMessage =
+            '$importedCount pengguna berhasil diimpor. $failedCount pengguna gagal diimpor.';
+
         _showNotification(
-            'Impor Dibatalkan', 'Tidak ada file yang dipilih untuk diimpor.',
+          'Impor Selesai!',
+          importSummaryMessage,
+          isError: failedCount > 0,
+        );
+      } catch (e) {
+        _showNotification(
+            'Gagal Import', 'Terjadi kesalahan saat mengimpor file Excel: $e',
             isError: true);
-        return;
+        log('Error importing users: $e');
       }
+    });
+  }
 
-      File file = File(result.files.single.path!);
-      var bytes = file.readAsBytesSync();
-      var excel = Excel.decodeBytes(bytes);
+  Future<void> _downloadImportTemplate() async {
+    await _handleStoragePermission(() async {
+      try {
+        final excel = Excel.createExcel();
+        final defaultSheetName = excel.getDefaultSheet()!;
+        excel.rename(defaultSheetName, 'Template Import Pengguna');
+        final sheet = excel['Template Import Pengguna'];
 
-      int importedCount = 0;
-      int failedCount = 0;
+        List<String> headers = [
+          'Nama Lengkap',
+          'Username',
+          'Nomor Telepon',
+          'Departemen',
+          'Role',
+          'Password'
+        ];
+        sheet.insertRowIterables(
+            headers.map((e) => TextCellValue(e)).toList(), 0);
 
-      for (var table in excel.tables.keys) {
-        var sheet = excel.tables[table];
-        if (sheet == null || sheet.rows.isEmpty) continue;
+        final excelBytes = excel.encode()!;
+        log('DEBUG: Data Excel berhasil dibuat.');
 
-        final headerRow = sheet.rows.first
-            .map((cell) => cell?.value?.toString().trim())
-            .toList();
+        final String? resultPath = await FilePicker.platform.saveFile(
+          fileName: 'Template_Import_Pengguna_Strata.xlsx',
+          type: FileType.custom,
+          allowedExtensions: ['xlsx'],
+        );
+        log('DEBUG: FilePicker resultPath: $resultPath');
 
-        final nameIndex = headerRow.indexOf('Nama Lengkap');
-        final usernameIndex = headerRow.indexOf('Username');
-        final phoneIndex = headerRow.indexOf('Nomor Telepon');
-        final departmentIndex = headerRow.indexOf('Departemen');
-        final roleIndex = headerRow.indexOf('Role');
-        final passwordIndex = headerRow.indexOf('Password');
+        if (!mounted) return;
 
-        if (nameIndex == -1 ||
-            usernameIndex == -1 ||
-            departmentIndex == -1 ||
-            roleIndex == -1 ||
-            passwordIndex == -1) {
-          _showNotification('Gagal Import',
-              'File Excel tidak memiliki semua kolom yang diperlukan (Nama Lengkap, Username, Nomor Telepon, Departemen, Role, Password).',
+        if (resultPath != null) {
+          final File file = File(resultPath);
+          await file.writeAsBytes(Uint8List.fromList(excelBytes));
+          _showNotification('Berhasil!',
+              'Template impor Excel berhasil diunduh ke: $resultPath',
+              isError: false);
+          log('File template berhasil diunduh ke: $resultPath');
+        } else {
+          _showNotification('Pengunduhan Dibatalkan',
+              'Pengunduhan template dibatalkan atau file tidak disimpan.',
               isError: true);
-          return;
         }
-
-        String? adminPassword = await _showAdminPasswordDialog();
-        if (adminPassword == null) {
-          _showNotification('Impor Dibatalkan', 'Sandi admin tidak dimasukkan.',
-              isError: true);
-          return;
-        }
-        final currentAdminEmail = _auth.currentUser!.email;
-
-        for (int i = 1; i < sheet.rows.length; i++) {
-          final row = sheet.rows[i];
-          final String name = (row[nameIndex]?.value?.toString().trim() ?? '');
-          final String username =
-              (row[usernameIndex]?.value?.toString().trim() ?? '');
-          final String email = username + _fictitiousDomain;
-          final String phoneNumber =
-              (row[phoneIndex]?.value?.toString().trim() ?? '');
-          String role = (row[roleIndex]?.value?.toString().trim() ?? 'staff')
-              .toLowerCase();
-          final String password =
-              (row[passwordIndex]?.value?.toString().trim() ?? '');
-          final String department =
-              (row[departmentIndex]?.value?.toString().trim() ?? '');
-
-          if (name.isEmpty || username.isEmpty || password.isEmpty) {
-            log('Skipping row $i: Nama, Username, atau Password kosong.');
-            failedCount++;
-            continue;
-          }
-          if (password.length < 6) {
-            log('Skipping row $i: Password kurang dari 6 karakter.');
-            failedCount++;
-            continue;
-          }
-
-          if (!_roles.contains(role)) {
-            role = 'staff';
-          }
-          if (!_departments.contains(department)) {
-            log('Skipping row $i: Departemen tidak valid.');
-            failedCount++;
-            continue;
-          }
-
-          try {
-            // Re-authenticate the admin before creating new users.
-            // This is a security measure.
-            await _auth.signInWithEmailAndPassword(
-                email: currentAdminEmail!, password: adminPassword);
-
-            final newUserCredential =
-                await _auth.createUserWithEmailAndPassword(
-                    email: email, password: password);
-
-            await _firestore
-                .collection('users')
-                .doc(newUserCredential.user!.uid)
-                .set({
-              'name': name,
-              'email': email,
-              'phoneNumber': phoneNumber,
-              'department': department,
-              'role': role,
-              'createdAt': FieldValue.serverTimestamp(),
-            });
-            importedCount++;
-          } on FirebaseAuthException catch (e) {
-            log('Gagal mengimpor $email (Auth Error): ${e.message}');
-            failedCount++;
-          } catch (e) {
-            log('Gagal mengimpor $email (General Error): $e');
-            failedCount++;
-          }
-        }
+      } catch (e) {
+        _showNotification('Gagal Download Template',
+            'Terjadi kesalahan saat mengunduh template: $e',
+            isError: true);
+        log('Error downloading template: $e');
       }
+    });
+  }
 
-      String importSummaryMessage =
-          '$importedCount pengguna berhasil diimpor. $failedCount pengguna gagal diimpor.';
+  Future<void> _handleStoragePermission(Function onPermissionGranted) async {
+    log('DEBUG: Memulai proses pengecekan izin penyimpanan.');
+    DeviceInfoPlugin plugin = DeviceInfoPlugin();
+    AndroidDeviceInfo android = await plugin.androidInfo;
+    PermissionStatus status;
 
+    if (android.version.sdkInt >= 33) {
+      log('DEBUG: Menggunakan izin untuk Android 13+');
+      status = await Permission.photos.request();
+    } else {
+      log('DEBUG: Menggunakan izin untuk Android 12-');
+      status = await Permission.storage.request();
+    }
+
+    log('DEBUG: Status izin setelah permintaan: $status');
+
+    if (status.isGranted) {
+      log('DEBUG: Izin diberikan.');
+      onPermissionGranted();
+    } else if (status.isPermanentlyDenied) {
+      log('DEBUG: Izin ditolak secara permanen. Membuka pengaturan aplikasi.');
       _showNotification(
-        'Impor Selesai!',
-        importSummaryMessage,
-        isError: failedCount > 0,
+        'Izin Ditolak Permanen',
+        'Aplikasi memerlukan izin penyimpanan untuk melanjutkan. Silakan berikan izin secara manual di Pengaturan.',
+        isError: true,
       );
-    } catch (e) {
+      openAppSettings();
+    } else {
+      log('DEBUG: Izin tidak diberikan. Status saat ini: $status');
       _showNotification(
-          'Gagal Import', 'Terjadi kesalahan saat mengimpor file Excel: $e',
-          isError: true);
-      log('Error importing users: $e');
+        'Izin Ditolak',
+        'Tidak dapat melanjutkan tanpa izin penyimpanan. Silakan coba lagi.',
+        isError: true,
+      );
     }
   }
 
@@ -741,54 +907,6 @@ class _UsersScreenState extends State<UsersScreen> {
         );
       },
     );
-  }
-
-  Future<void> _downloadImportTemplate() async {
-    try {
-      final excel = Excel.createExcel();
-      final defaultSheetName = excel.getDefaultSheet()!;
-      excel.rename(defaultSheetName, 'Template Import Pengguna');
-      final sheet = excel['Template Import Pengguna'];
-
-      List<String> headers = [
-        'Nama Lengkap',
-        'Username',
-        'Nomor Telepon',
-        'Departemen',
-        'Role',
-        'Password'
-      ];
-      sheet.insertRowIterables(
-          headers.map((e) => TextCellValue(e)).toList(), 0);
-
-      final excelBytes = excel.encode()!;
-
-      final String? resultPath = await FilePicker.platform.saveFile(
-        fileName: 'Template_Import_Pengguna_Strata.xlsx',
-        type: FileType.custom,
-        allowedExtensions: ['xlsx'],
-      );
-
-      if (!mounted) return;
-
-      if (resultPath != null) {
-        final File file = File(resultPath);
-        await file.writeAsBytes(Uint8List.fromList(excelBytes));
-        _showNotification('Berhasil!',
-            'Template impor Excel berhasil diunduh ke: $resultPath',
-            isError: false);
-        log('File template berhasil diunduh ke: $resultPath');
-      } else {
-        _showNotification('Pengunduhan Dibatalkan',
-            'Pengunduhan template dibatalkan atau file tidak disimpan.',
-            isError: true);
-      }
-    } catch (e) {
-      _showNotification('Gagal Download Template',
-          'Terjadi kesalahan saat mengunduh template: $e',
-          isError: true);
-      log('Error downloading template: $e');
-    }
   }
 
   void _showImportExportOptions() {
@@ -996,20 +1114,51 @@ class _UsersScreenState extends State<UsersScreen> {
                               )),
                         ],
                       ),
-                      trailing: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          IconButton(
-                            icon: const Icon(Icons.edit, color: Colors.blue),
-                            tooltip: 'Edit User',
-                            onPressed: () => _addEditUser(userToEdit: userDoc),
+                      trailing: PopupMenuButton<String>(
+                        onSelected: (String result) {
+                          if (result == 'edit') {
+                            _addEditUser(userToEdit: userDoc);
+                          } else if (result == 'reset_password') {
+                            _sendPasswordResetEmail(email);
+                          } else if (result == 'delete') {
+                            _deleteUser(userDoc.id, name);
+                          }
+                        },
+                        itemBuilder: (BuildContext context) =>
+                            <PopupMenuEntry<String>>[
+                          const PopupMenuItem<String>(
+                            value: 'edit',
+                            child: Row(
+                              children: [
+                                Icon(Icons.edit, color: Colors.blue),
+                                SizedBox(width: 8),
+                                Text('Edit Data'),
+                              ],
+                            ),
                           ),
-                          IconButton(
-                            icon: const Icon(Icons.delete, color: Colors.red),
-                            tooltip: 'Hapus User',
-                            onPressed: () => _deleteUser(userDoc.id, name),
+                          const PopupMenuItem<String>(
+                            value: 'reset_password',
+                            child: Row(
+                              children: [
+                                Icon(Icons.lock_reset, color: Colors.orange),
+                                SizedBox(width: 8),
+                                Text('Reset Sandi'),
+                              ],
+                            ),
+                          ),
+                          const PopupMenuItem<String>(
+                            value: 'delete',
+                            child: Row(
+                              children: [
+                                Icon(Icons.delete, color: Colors.red),
+                                SizedBox(width: 8),
+                                Text('Hapus Pengguna'),
+                              ],
+                            ),
                           ),
                         ],
+                        icon: const Icon(Icons.more_vert),
+                        tooltip: 'Opsi Lain',
                       ),
                       onTap: () {
                         log('Detail user $name diklik');
