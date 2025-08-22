@@ -10,6 +10,9 @@ import 'dart:io';
 import 'dart:typed_data';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:device_info_plus/device_info_plus.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:flutter/foundation.dart' show defaultTargetPlatform;
 
 class UsersScreen extends StatefulWidget {
   const UsersScreen({super.key});
@@ -24,6 +27,7 @@ class _UsersScreenState extends State<UsersScreen> {
 
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
+  bool _isLoadingExport = false;
 
   Timer? _notificationTimer;
   final List<String> _departments = [
@@ -565,6 +569,10 @@ class _UsersScreenState extends State<UsersScreen> {
   }
 
   Future<void> _exportUsersToExcel() async {
+    setState(() {
+      _isLoadingExport = true;
+    });
+
     await _handleStoragePermission(() async {
       try {
         final querySnapshot = await _firestore.collection('users').get();
@@ -593,7 +601,7 @@ class _UsersScreenState extends State<UsersScreen> {
             headers.map((e) => TextCellValue(e)).toList(), 0);
 
         for (int i = 0; i < usersData.length; i++) {
-          final userData = usersData[i].data();
+          final userData = usersData[i].data() as Map<String, dynamic>;
           String phoneNumber = userData['phoneNumber']?.toString() ?? '';
           String email = userData['email'] ?? '';
           String username = email.split('@')[0];
@@ -615,34 +623,64 @@ class _UsersScreenState extends State<UsersScreen> {
         }
 
         final excelBytes = excel.encode()!;
-        log('DEBUG: Data Excel berhasil dibuat.');
-
-        final String? resultPath = await FilePicker.platform.saveFile(
-          fileName: 'Daftar_Pengguna_Strata.xlsx',
-          type: FileType.custom,
-          allowedExtensions: ['xlsx'],
-        );
-        log('DEBUG: FilePicker resultPath: $resultPath');
-
-        if (!mounted) return;
-
-        if (resultPath != null) {
-          final File file = File(resultPath);
-          await file.writeAsBytes(Uint8List.fromList(excelBytes));
-          _showNotification('Berhasil!',
-              'Daftar pengguna berhasil diekspor ke Excel di: $resultPath',
-              isError: false);
-          log('File Excel berhasil diekspor ke: $resultPath');
-        } else {
-          _showNotification('Ekspor Dibatalkan',
-              'Ekspor dibatalkan atau file tidak disimpan.',
+        if (excelBytes == null || excelBytes.isEmpty) {
+          _showNotification('Ekspor Gagal', 'Gagal membuat file Excel.',
               isError: true);
+          return;
+        }
+
+        final String fileName =
+            'Daftar_Pengguna_Strata_${DateTime.now().millisecondsSinceEpoch}.xlsx';
+
+        if (defaultTargetPlatform == TargetPlatform.windows ||
+            defaultTargetPlatform == TargetPlatform.macOS ||
+            defaultTargetPlatform == TargetPlatform.linux) {
+          // Logic for desktop platforms
+          final String? resultPath = await FilePicker.platform.saveFile(
+            fileName: fileName,
+            type: FileType.custom,
+            allowedExtensions: ['xlsx'],
+          );
+
+          if (!mounted) return;
+
+          if (resultPath != null) {
+            final File file = File(resultPath);
+            await file.writeAsBytes(excelBytes);
+            _showNotification('Berhasil!',
+                'Daftar pengguna berhasil diekspor ke Excel di: $resultPath',
+                isError: false);
+          } else {
+            _showNotification('Ekspor Dibatalkan',
+                'Ekspor dibatalkan atau file tidak disimpan.',
+                isError: true);
+          }
+        } else {
+          // Logic for mobile platforms (Android & iOS)
+          final directory = await getApplicationDocumentsDirectory();
+          final filePath = '${directory.path}/$fileName';
+          final file = File(filePath);
+          await file.writeAsBytes(excelBytes, flush: true);
+
+          await Share.shareXFiles([XFile(filePath)],
+              text: 'Daftar pengguna Strata Lite');
+
+          if (!mounted) return;
+          _showNotification('Ekspor Berhasil',
+              'Data berhasil diekspor. Pilih aplikasi untuk menyimpan file.',
+              isError: false);
         }
       } catch (e) {
         _showNotification(
             'Gagal Export', 'Terjadi kesalahan saat mengekspor data: $e',
             isError: true);
         log('Error exporting users: $e');
+      } finally {
+        if (mounted) {
+          setState(() {
+            _isLoadingExport = false;
+          });
+        }
       }
     });
   }
@@ -811,26 +849,45 @@ class _UsersScreenState extends State<UsersScreen> {
         final excelBytes = excel.encode()!;
         log('DEBUG: Data Excel berhasil dibuat.');
 
-        final String? resultPath = await FilePicker.platform.saveFile(
-          fileName: 'Template_Import_Pengguna_Strata.xlsx',
-          type: FileType.custom,
-          allowedExtensions: ['xlsx'],
-        );
-        log('DEBUG: FilePicker resultPath: $resultPath');
+        final String fileName =
+            'Template_Import_Pengguna_Strata_${DateTime.now().millisecondsSinceEpoch}.xlsx';
 
-        if (!mounted) return;
+        if (defaultTargetPlatform == TargetPlatform.windows ||
+            defaultTargetPlatform == TargetPlatform.macOS ||
+            defaultTargetPlatform == TargetPlatform.linux) {
+          final String? resultPath = await FilePicker.platform.saveFile(
+            fileName: fileName,
+            type: FileType.custom,
+            allowedExtensions: ['xlsx'],
+          );
 
-        if (resultPath != null) {
-          final File file = File(resultPath);
-          await file.writeAsBytes(Uint8List.fromList(excelBytes));
-          _showNotification('Berhasil!',
-              'Template impor Excel berhasil diunduh ke: $resultPath',
-              isError: false);
-          log('File template berhasil diunduh ke: $resultPath');
+          if (!mounted) return;
+
+          if (resultPath != null) {
+            final File file = File(resultPath);
+            await file.writeAsBytes(excelBytes);
+            _showNotification('Berhasil!',
+                'Template impor Excel berhasil diunduh ke: $resultPath',
+                isError: false);
+            log('File template berhasil diunduh ke: $resultPath');
+          } else {
+            _showNotification('Pengunduhan Dibatalkan',
+                'Pengunduhan template dibatalkan atau file tidak disimpan.',
+                isError: true);
+          }
         } else {
-          _showNotification('Pengunduhan Dibatalkan',
-              'Pengunduhan template dibatalkan atau file tidak disimpan.',
-              isError: true);
+          final directory = await getApplicationDocumentsDirectory();
+          final filePath = '${directory.path}/$fileName';
+          final file = File(filePath);
+          await file.writeAsBytes(excelBytes, flush: true);
+
+          await Share.shareXFiles([XFile(filePath)],
+              text: 'Template Import Pengguna Strata Lite');
+
+          if (!mounted) return;
+          _showNotification('Berhasil!',
+              'Template berhasil dibuat. Pilih aplikasi untuk menyimpannya.',
+              isError: false);
         }
       } catch (e) {
         _showNotification('Gagal Download Template',
@@ -843,16 +900,22 @@ class _UsersScreenState extends State<UsersScreen> {
 
   Future<void> _handleStoragePermission(Function onPermissionGranted) async {
     log('DEBUG: Memulai proses pengecekan izin penyimpanan.');
-    DeviceInfoPlugin plugin = DeviceInfoPlugin();
-    AndroidDeviceInfo android = await plugin.androidInfo;
     PermissionStatus status;
 
-    if (android.version.sdkInt >= 33) {
-      log('DEBUG: Menggunakan izin untuk Android 13+');
+    if (defaultTargetPlatform == TargetPlatform.android) {
+      final androidInfo = await DeviceInfoPlugin().androidInfo;
+      if (androidInfo.version.sdkInt >= 33) {
+        // Android 13+
+        status = await Permission.photos.request();
+      } else {
+        // Android < 13
+        status = await Permission.storage.request();
+      }
+    } else if (defaultTargetPlatform == TargetPlatform.iOS) {
       status = await Permission.photos.request();
     } else {
-      log('DEBUG: Menggunakan izin untuk Android 12-');
-      status = await Permission.storage.request();
+      // Assume desktop platforms have no permission issues for saving files
+      status = PermissionStatus.granted;
     }
 
     log('DEBUG: Status izin setelah permintaan: $status');
@@ -869,7 +932,7 @@ class _UsersScreenState extends State<UsersScreen> {
       );
       openAppSettings();
     } else {
-      log('DEBUG: Izin tidak diberikan. Status saat ini: $status');
+      log('DEBUG: Izin Ditolak');
       _showNotification(
         'Izin Ditolak',
         'Tidak dapat melanjutkan tanpa izin penyimpanan. Silakan coba lagi.',
