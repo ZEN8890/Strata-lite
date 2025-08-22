@@ -124,7 +124,7 @@ class _UsersScreenState extends State<UsersScreen> {
         text: isEditing
             ? (userToEdit.data() as Map<String, dynamic>)['phoneNumber']
             : '');
-    TextEditingController passwordController = TextEditingController();
+    TextEditingController newPasswordController = TextEditingController();
     TextEditingController adminPasswordController = TextEditingController();
 
     String? selectedDepartment = isEditing
@@ -253,9 +253,40 @@ class _UsersScreenState extends State<UsersScreen> {
                           value == null || value.isEmpty ? 'Pilih role' : null,
                     ),
                     const SizedBox(height: 10),
-                    if (!isEditing) ...[
+                    if (isEditing) ...[
                       TextFormField(
-                        controller: passwordController,
+                        controller: newPasswordController,
+                        decoration: InputDecoration(
+                          labelText: 'Sandi Baru (kosongkan jika tidak diubah)',
+                          border: const OutlineInputBorder(),
+                          isDense: true,
+                          contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 10),
+                          suffixIcon: IconButton(
+                            icon: Icon(
+                              _obscureNewPassword
+                                  ? Icons.visibility
+                                  : Icons.visibility_off,
+                            ),
+                            onPressed: () {
+                              setStateSB(() {
+                                _obscureNewPassword = !_obscureNewPassword;
+                              });
+                            },
+                          ),
+                        ),
+                        obscureText: _obscureNewPassword,
+                        validator: (value) {
+                          if (value!.isNotEmpty && value.length < 6) {
+                            return 'Password minimal 6 karakter';
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 10),
+                    ] else ...[
+                      TextFormField(
+                        controller: newPasswordController,
                         decoration: InputDecoration(
                           labelText: 'Password Pengguna Baru (min. 6 karakter)',
                           border: const OutlineInputBorder(),
@@ -319,102 +350,102 @@ class _UsersScreenState extends State<UsersScreen> {
               ),
               ElevatedButton(
                 onPressed: () async {
-                  if (formKey.currentState!.validate()) {
-                    if (selectedDepartment == null ||
-                        selectedDepartment!.isEmpty) {
-                      _showNotification(
-                          'Validasi Gagal', 'Departemen tidak boleh kosong.',
-                          isError: true);
-                      return;
-                    }
-                    if (selectedRole == null || selectedRole!.isEmpty) {
-                      _showNotification(
-                          'Validasi Gagal', 'Role tidak boleh kosong.',
-                          isError: true);
-                      return;
-                    }
+                  if (!formKey.currentState!.validate()) {
+                    return;
+                  }
 
-                    final localDialogContext = dialogContext;
-                    final String? currentAdminEmail = _auth.currentUser!.email;
-                    final String currentAdminPassword =
-                        adminPasswordController.text.trim();
-                    final String userEmail = isEditing
-                        ? (userToEdit!.data() as Map<String, dynamic>)['email']
-                        : usernameController.text.trim() + _fictitiousDomain;
+                  final localDialogContext = dialogContext;
+                  final String? currentAdminEmail = _auth.currentUser!.email;
+                  final String currentAdminPassword =
+                      adminPasswordController.text.trim();
+                  final String userEmail = isEditing
+                      ? (userToEdit!.data() as Map<String, dynamic>)['email']
+                      : usernameController.text.trim() + _fictitiousDomain;
+                  final String newPassword = newPasswordController.text.trim();
 
-                    try {
+                  try {
+                    // Otentikasi admin
+                    await _auth.signInWithEmailAndPassword(
+                        email: currentAdminEmail!,
+                        password: currentAdminPassword);
+
+                    if (isEditing) {
+                      // Perbarui data Firestore
+                      await _firestore
+                          .collection('users')
+                          .doc(userToEdit.id)
+                          .update({
+                        'name': nameController.text.trim(),
+                        'phoneNumber': phoneController.text.trim(),
+                        'department': selectedDepartment,
+                        'role': selectedRole,
+                      });
+
+                      // Perbarui sandi jika sandi baru diisi
+                      if (newPassword.isNotEmpty) {
+                        // Panggil Cloud Function untuk mereset sandi
+                        final HttpsCallable callable =
+                            _functions.httpsCallable('updateUserPassword');
+                        await callable.call({
+                          'uid': userToEdit.id,
+                          'password': newPassword,
+                        });
+                      }
+
+                      Navigator.of(localDialogContext).pop();
+                      _showNotification('Berhasil!',
+                          'Pengguna ${nameController.text} berhasil diperbarui.',
+                          isError: false);
+                    } else {
+                      // Logika untuk menambahkan pengguna baru
+                      final newUserCredential =
+                          await _auth.createUserWithEmailAndPassword(
+                              email: userEmail, password: newPassword);
+
+                      await _firestore
+                          .collection('users')
+                          .doc(newUserCredential.user!.uid)
+                          .set({
+                        'name': nameController.text.trim(),
+                        'email': userEmail,
+                        'phoneNumber': phoneController.text.trim(),
+                        'department': selectedDepartment,
+                        'role': selectedRole,
+                        'createdAt': FieldValue.serverTimestamp(),
+                      });
+
+                      // Re-autentikasi kembali admin
                       await _auth.signInWithEmailAndPassword(
-                          email: currentAdminEmail!,
+                          email: currentAdminEmail,
                           password: currentAdminPassword);
 
-                      if (isEditing) {
-                        await _firestore
-                            .collection('users')
-                            .doc(userToEdit.id)
-                            .update({
-                          'name': nameController.text.trim(),
-                          'phoneNumber': phoneController.text.trim(),
-                          'department': selectedDepartment,
-                          'role': selectedRole,
-                        });
-                        if (localDialogContext.mounted) {
-                          Navigator.of(localDialogContext).pop();
-                        }
-                        _showNotification('Berhasil!',
-                            'Pengguna ${nameController.text} berhasil diperbarui.',
-                            isError: false);
-                      } else {
-                        final newUserCredential =
-                            await _auth.createUserWithEmailAndPassword(
-                                email: userEmail,
-                                password: passwordController.text.trim());
-
-                        await _firestore
-                            .collection('users')
-                            .doc(newUserCredential.user!.uid)
-                            .set({
-                          'name': nameController.text.trim(),
-                          'email': userEmail,
-                          'phoneNumber': phoneController.text.trim(),
-                          'department': selectedDepartment,
-                          'role': selectedRole,
-                          'createdAt': FieldValue.serverTimestamp(),
-                        });
-
-                        await _auth.signInWithEmailAndPassword(
-                            email: currentAdminEmail,
-                            password: currentAdminPassword);
-
-                        if (localDialogContext.mounted) {
-                          Navigator.of(localDialogContext).pop();
-                        }
-                        _showNotification('Akun Berhasil Dibuat!',
-                            'Pengguna ${nameController.text} berhasil ditambahkan.',
-                            isError: false);
-                      }
-                    } on FirebaseAuthException catch (e) {
-                      String message;
-                      if (e.code == 'wrong-password' ||
-                          e.code == 'invalid-credential') {
-                        message = 'Sandi admin salah.';
-                      } else if (e.code == 'email-already-in-use') {
-                        message = 'Username ini sudah terdaftar.';
-                      } else if (e.code == 'weak-password') {
-                        message = 'Password terlalu lemah.';
-                      } else {
-                        message = 'Gagal memproses akun: ${e.message}';
-                      }
-                      if (localDialogContext.mounted) {
-                        Navigator.of(localDialogContext).pop();
-                      }
-                      _showNotification('Gagal!', message, isError: true);
-                    } catch (e) {
-                      _showNotification('Error', 'Terjadi kesalahan umum: $e',
-                          isError: true);
-                      log('Error in add/edit user flow: $e');
-                      if (localDialogContext.mounted) {
-                        Navigator.of(localDialogContext).pop();
-                      }
+                      Navigator.of(localDialogContext).pop();
+                      _showNotification('Akun Berhasil Dibuat!',
+                          'Pengguna ${nameController.text} berhasil ditambahkan.',
+                          isError: false);
+                    }
+                  } on FirebaseAuthException catch (e) {
+                    String message;
+                    if (e.code == 'wrong-password' ||
+                        e.code == 'invalid-credential') {
+                      message = 'Sandi admin salah.';
+                    } else if (e.code == 'email-already-in-use') {
+                      message = 'Username ini sudah terdaftar.';
+                    } else if (e.code == 'weak-password') {
+                      message = 'Password terlalu lemah.';
+                    } else {
+                      message = 'Gagal memproses akun: ${e.message}';
+                    }
+                    if (localDialogContext.mounted) {
+                      Navigator.of(localDialogContext).pop();
+                    }
+                    _showNotification('Gagal!', message, isError: true);
+                  } catch (e) {
+                    _showNotification('Error', 'Terjadi kesalahan umum: $e',
+                        isError: true);
+                    log('Error in add/edit user flow: $e');
+                    if (localDialogContext.mounted) {
+                      Navigator.of(localDialogContext).pop();
                     }
                   }
                 },

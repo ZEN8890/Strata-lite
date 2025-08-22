@@ -3,7 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'dart:developer';
 import 'package:another_flushbar/flushbar.dart';
-import 'package:cloud_functions/cloud_functions.dart';
+import 'dart:async';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -15,7 +15,6 @@ class SettingsScreen extends StatefulWidget {
 class _SettingsScreenState extends State<SettingsScreen> {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  final FirebaseFunctions _functions = FirebaseFunctions.instance;
 
   User? _currentUser;
 
@@ -23,7 +22,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _phoneController = TextEditingController();
   final TextEditingController _newPasswordController = TextEditingController();
-  final TextEditingController _adminPasswordController =
+  final TextEditingController _currentPasswordController =
       TextEditingController();
 
   String? _selectedDepartment;
@@ -60,7 +59,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _emailController.dispose();
     _phoneController.dispose();
     _newPasswordController.dispose();
-    _adminPasswordController.dispose();
+    _currentPasswordController.dispose();
     super.dispose();
   }
 
@@ -187,7 +186,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _resetPassword() async {
     bool _obscureNewPassword = true;
-    bool _obscureAdminPassword = true;
+    bool _obscureCurrentPassword = true;
 
     final _formKey = GlobalKey<FormState>();
 
@@ -204,9 +203,32 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     TextFormField(
+                      controller: _currentPasswordController,
+                      decoration: InputDecoration(
+                        labelText: 'Sandi Saat Ini',
+                        suffixIcon: IconButton(
+                          icon: Icon(
+                            _obscureCurrentPassword
+                                ? Icons.visibility
+                                : Icons.visibility_off,
+                          ),
+                          onPressed: () {
+                            setStateSB(() {
+                              _obscureCurrentPassword =
+                                  !_obscureCurrentPassword;
+                            });
+                          },
+                        ),
+                      ),
+                      obscureText: _obscureCurrentPassword,
+                      validator: (value) =>
+                          value!.isEmpty ? 'Sandi tidak boleh kosong.' : null,
+                    ),
+                    const SizedBox(height: 10),
+                    TextFormField(
                       controller: _newPasswordController,
                       decoration: InputDecoration(
-                        labelText: 'Password Baru (min. 6 karakter)',
+                        labelText: 'Sandi Baru (min. 6 karakter)',
                         suffixIcon: IconButton(
                           icon: Icon(
                             _obscureNewPassword
@@ -223,29 +245,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       obscureText: _obscureNewPassword,
                       validator: (value) => value!.length < 6
                           ? 'Password minimal 6 karakter'
-                          : null,
-                    ),
-                    const SizedBox(height: 10),
-                    TextFormField(
-                      controller: _adminPasswordController,
-                      decoration: InputDecoration(
-                        labelText: 'Sandi Admin Saat Ini',
-                        suffixIcon: IconButton(
-                          icon: Icon(
-                            _obscureAdminPassword
-                                ? Icons.visibility
-                                : Icons.visibility_off,
-                          ),
-                          onPressed: () {
-                            setStateSB(() {
-                              _obscureAdminPassword = !_obscureAdminPassword;
-                            });
-                          },
-                        ),
-                      ),
-                      obscureText: _obscureAdminPassword,
-                      validator: (value) => value!.isEmpty
-                          ? 'Sandi admin tidak boleh kosong.'
                           : null,
                     ),
                   ],
@@ -273,7 +272,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
     if (confirm != true) {
       _newPasswordController.clear();
-      _adminPasswordController.clear();
+      _currentPasswordController.clear();
       return;
     }
 
@@ -282,35 +281,45 @@ class _SettingsScreenState extends State<SettingsScreen> {
     });
 
     try {
-      // Re-authenticate admin user
-      await _auth.signInWithEmailAndPassword(
+      log('Mencoba otentikasi ulang pengguna...');
+      // Otentikasi ulang pengguna dengan sandi saat ini dengan timeout
+      AuthCredential credential = EmailAuthProvider.credential(
         email: _currentUser!.email!,
-        password: _adminPasswordController.text.trim(),
+        password: _currentPasswordController.text.trim(),
       );
+      await _currentUser!
+          .reauthenticateWithCredential(credential)
+          .timeout(const Duration(seconds: 10));
+      log('Otentikasi ulang berhasil.');
 
-      // Call Cloud Function to reset password securely
-      final HttpsCallable callable =
-          _functions.httpsCallable('updateUserPassword');
-      await callable.call({
-        'uid': _currentUser!.uid,
-        'password': _newPasswordController.text.trim(),
-      });
+      log('Mencoba memperbarui sandi...');
+      // Langsung perbarui sandi setelah otentikasi ulang berhasil
+      await _currentUser!
+          .updatePassword(_newPasswordController.text.trim())
+          .timeout(const Duration(seconds: 10));
+      log('Pembaruan sandi berhasil.');
 
+      // Panggil notifikasi hanya setelah proses berhasil dan dialog ditutup
       _showNotification('Berhasil!', 'Password berhasil direset.',
           isError: false);
       _newPasswordController.clear();
-      _adminPasswordController.clear();
+      _currentPasswordController.clear();
+    } on TimeoutException {
+      _showNotification('Gagal!',
+          'Permintaan memakan waktu terlalu lama. Periksa koneksi internet Anda.',
+          isError: true);
+      log('Timeout Exception: Permintaan otentikasi ulang/pembaruan sandi gagal karena timeout.');
     } on FirebaseAuthException catch (e) {
       String message;
       if (e.code == 'wrong-password' || e.code == 'invalid-credential') {
-        message = 'Sandi admin salah.';
+        message = 'Sandi saat ini salah.';
       } else if (e.code == 'weak-password') {
-        message = 'Password terlalu lemah.';
+        message = 'Sandi terlalu lemah.';
       } else {
         message = 'Gagal mereset sandi: ${e.message}';
       }
       _showNotification('Gagal!', message, isError: true);
-      log('Error resetting password: ${e.message}');
+      log('Error resetting password: ${e.code} - ${e.message}');
     } catch (e) {
       _showNotification('Gagal!', 'Terjadi kesalahan umum: $e', isError: true);
       log('Error resetting password: $e');
@@ -406,13 +415,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       ),
                     ),
                     const SizedBox(height: 20),
-                    ElevatedButton(
-                      onPressed: _saveUserData,
-                      child: _isLoading
-                          ? const CircularProgressIndicator(color: Colors.white)
-                          : const Text('Simpan Perubahan'),
-                    ),
-                    const SizedBox(height: 20),
                     Center(
                       child: ElevatedButton.icon(
                         onPressed: _isResettingPassword ? null : _resetPassword,
@@ -435,6 +437,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               borderRadius: BorderRadius.circular(8)),
                         ),
                       ),
+                    ),
+                    const SizedBox(height: 20),
+                    ElevatedButton(
+                      onPressed: _saveUserData,
+                      child: _isLoading
+                          ? const CircularProgressIndicator(color: Colors.white)
+                          : const Text('Simpan Perubahan'),
                     ),
                   ],
                 ),

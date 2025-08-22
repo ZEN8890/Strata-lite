@@ -8,7 +8,52 @@ const admin = require("firebase-admin");
 admin.initializeApp();
 
 // ====================================================================================
-// 1. Fungsi HTTPS yang Dapat Dipanggil: createUserAndProfile
+// 1. Fungsi HTTPS yang Dapat Dipanggil: updateUserPassword
+//    Mengupdate kata sandi pengguna di Firebase Authentication.
+//    Fungsi ini dirancang agar pengguna dapat memperbarui kata sandi mereka sendiri.
+// ====================================================================================
+exports.updateUserPassword = functions.https.onCall(async (data, context) => {
+  // Periksa apakah pengguna sudah terautentikasi
+  if (!context.auth) {
+    throw new functions.https.HttpsError(
+        "unauthenticated",
+        "Hanya pengguna terautentikasi yang bisa memperbarui sandi.",
+    );
+  }
+
+  const {uid, password} = data;
+  const currentUid = context.auth.uid;
+
+  // Periksa apakah pengguna mencoba memperbarui sandi mereka sendiri
+  if (uid !== currentUid) {
+    throw new functions.https.HttpsError(
+        "permission-denied",
+        "Anda tidak memiliki izin untuk memperbarui sandi pengguna lain.",
+    );
+  }
+
+  // Periksa apakah sandi baru telah disediakan dan memenuhi persyaratan minimal
+  if (!password || password.length < 6) {
+    throw new functions.https.HttpsError(
+        "invalid-argument",
+        "Sandi baru harus minimal 6 karakter.",
+    );
+  }
+
+  try {
+    await admin.auth().updateUser(uid, {password: password});
+    return {status: "Sandi berhasil diperbarui."};
+  } catch (error) {
+    console.error("Error updating password:", error);
+    throw new functions.https.HttpsError(
+        "internal",
+        "Gagal memperbarui sandi.",
+    );
+  }
+});
+
+// ====================================================================================
+// 2. Fungsi HTTPS yang Dapat Dipanggil: createUserAndProfile
 //    Membuat pengguna di Firebase Auth dan profil di Firestore.
 //    Dipanggil dari aplikasi Flutter Anda.
 // ====================================================================================
@@ -93,7 +138,7 @@ exports.createUserAndProfile = functions.https.onCall(async (data, context) => {
 });
 
 // ====================================================================================
-// 2. Fungsi Trigger Firestore: deleteUserAuthOnProfileDelete
+// 3. Fungsi Trigger Firestore: deleteUserAuthOnProfileDelete
 //    Otomatis menghapus akun Firebase Auth saat dokumen profil pengguna di Firestore dihapus.
 // ====================================================================================
 exports.deleteUserAuthOnProfileDelete = functions.firestore
