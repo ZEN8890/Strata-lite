@@ -1,4 +1,3 @@
-// Path: lib/screens/users_screen.dart
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'dart:developer';
@@ -28,19 +27,23 @@ class _UsersScreenState extends State<UsersScreen> {
 
   Timer? _notificationTimer;
   final List<String> _departments = [
-    'Marketing',
-    'Sales',
+    'A&G',
+    'ENGINEERING',
+    'FB PRODUCT',
+    'FB SERVICE',
+    'FINANCE',
+    'FRONT OFFICE',
+    'HOUSEKEEPING',
     'HR',
-    'Finance',
-    'FO',
-    'FBS',
-    'FBP',
-    'HK',
-    'Engineering',
+    'IT',
+    'Marketing',
+    'SALES',
+    'SALES & MARKETING',
     'Security',
-    'IT'
   ];
   final List<String> _roles = ['staff', 'admin'];
+
+  static const String _fictitiousDomain = '@strata.com';
 
   @override
   void initState() {
@@ -111,21 +114,28 @@ class _UsersScreenState extends State<UsersScreen> {
         text: isEditing
             ? (userToEdit.data() as Map<String, dynamic>)['name']
             : '');
-    TextEditingController emailController = TextEditingController(
+    TextEditingController usernameController = TextEditingController(
         text: isEditing
             ? (userToEdit.data() as Map<String, dynamic>)['email']
+                .toString()
+                .split('@')[0]
             : '');
     TextEditingController phoneController = TextEditingController(
         text: isEditing
             ? (userToEdit.data() as Map<String, dynamic>)['phoneNumber']
             : '');
     TextEditingController passwordController = TextEditingController();
+    TextEditingController adminPasswordController = TextEditingController();
+
     String? selectedDepartment = isEditing
         ? (userToEdit.data() as Map<String, dynamic>)['department']
         : _departments.first;
     String? selectedRole = isEditing
         ? (userToEdit.data() as Map<String, dynamic>)['role']
         : _roles.first;
+
+    bool _obscureNewPassword = true;
+    bool _obscureAdminPassword = true;
 
     if (!isEditing && !_departments.contains(selectedDepartment)) {
       selectedDepartment = _departments.first;
@@ -142,247 +152,297 @@ class _UsersScreenState extends State<UsersScreen> {
       return;
     }
 
-    TextEditingController adminPasswordController = TextEditingController();
-
     await showDialog(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text(isEditing ? 'Edit Pengguna' : 'Tambah Pengguna Baru'),
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: 20.0, vertical: 10.0),
-        content: SingleChildScrollView(
-          child: Form(
-            key: formKey,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextFormField(
-                  controller: nameController,
-                  decoration: const InputDecoration(
-                    labelText: 'Nama Lengkap',
-                    border: OutlineInputBorder(),
-                    isDense: true,
-                    contentPadding:
-                        EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                  ),
-                  validator: (value) =>
-                      value!.isEmpty ? 'Nama tidak boleh kosong' : null,
-                ),
-                const SizedBox(height: 10),
-                TextFormField(
-                  controller: emailController,
-                  decoration: const InputDecoration(
-                    labelText: 'Email',
-                    border: OutlineInputBorder(),
-                    isDense: true,
-                    contentPadding:
-                        EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                  ),
-                  keyboardType: TextInputType.emailAddress,
-                  readOnly: isEditing,
-                  validator: (value) {
-                    if (value!.isEmpty) return 'Email tidak boleh kosong';
-                    if (!value.contains('@') || !value.contains('.')) {
-                      return 'Format email tidak valid';
-                    }
-                    return null;
-                  },
-                ),
-                const SizedBox(height: 10),
-                TextFormField(
-                  controller: phoneController,
-                  decoration: const InputDecoration(
-                    labelText: 'Nomor Telepon',
-                    border: OutlineInputBorder(),
-                    isDense: true,
-                    contentPadding:
-                        EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                  ),
-                  keyboardType: TextInputType.phone,
-                ),
-                const SizedBox(height: 10),
-                DropdownButtonFormField<String>(
-                  value: selectedDepartment,
-                  decoration: const InputDecoration(
-                    labelText: 'Departemen',
-                    border: OutlineInputBorder(),
-                    isDense: true,
-                    contentPadding:
-                        EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                  ),
-                  items: _departments
-                      .map((dep) =>
-                          DropdownMenuItem(value: dep, child: Text(dep)))
-                      .toList(),
-                  onChanged: (value) => selectedDepartment = value,
-                  validator: (value) => value == null || value.isEmpty
-                      ? 'Pilih departemen'
-                      : null,
-                ),
-                const SizedBox(height: 10),
-                DropdownButtonFormField<String>(
-                  value: selectedRole,
-                  decoration: const InputDecoration(
-                    labelText: 'Role',
-                    border: OutlineInputBorder(),
-                    isDense: true,
-                    contentPadding:
-                        EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                  ),
-                  items: _roles
-                      .map((role) => DropdownMenuItem(
-                          value: role, child: Text(role.toUpperCase())))
-                      .toList(),
-                  onChanged: (value) => selectedRole = value,
-                  validator: (value) =>
-                      value == null || value.isEmpty ? 'Pilih role' : null,
-                ),
-                const SizedBox(height: 10),
-                if (!isEditing) ...[
-                  TextFormField(
-                    controller: passwordController,
-                    decoration: const InputDecoration(
-                      labelText: 'Password Pengguna Baru (min. 6 karakter)',
-                      border: OutlineInputBorder(),
-                      isDense: true,
-                      contentPadding:
-                          EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setStateSB) {
+          return AlertDialog(
+            title: Text(isEditing ? 'Edit Pengguna' : 'Tambah Pengguna Baru'),
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 20.0, vertical: 10.0),
+            content: SingleChildScrollView(
+              child: Form(
+                key: formKey,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    TextFormField(
+                      controller: nameController,
+                      decoration: const InputDecoration(
+                        labelText: 'Nama Lengkap',
+                        border: OutlineInputBorder(),
+                        isDense: true,
+                        contentPadding:
+                            EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                      ),
+                      validator: (value) =>
+                          value!.isEmpty ? 'Nama tidak boleh kosong' : null,
                     ),
-                    obscureText: true,
-                    validator: (value) => value!.length < 6
-                        ? 'Password minimal 6 karakter'
-                        : null,
-                  ),
-                  const SizedBox(height: 10),
-                ],
-                TextFormField(
-                  controller: adminPasswordController,
-                  decoration: const InputDecoration(
-                    labelText: 'Sandi Admin Anda',
-                    border: OutlineInputBorder(),
-                    isDense: true,
-                    contentPadding:
-                        EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                  ),
-                  obscureText: true,
-                  validator: (value) =>
-                      value!.isEmpty ? 'Sandi admin tidak boleh kosong.' : null,
+                    const SizedBox(height: 10),
+                    TextFormField(
+                      controller: usernameController,
+                      decoration: InputDecoration(
+                        labelText: 'Username',
+                        border: const OutlineInputBorder(),
+                        suffixText: isEditing ? null : _fictitiousDomain,
+                        isDense: true,
+                        contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 10),
+                      ),
+                      readOnly: isEditing,
+                      validator: (value) {
+                        if (value!.isEmpty)
+                          return 'Username tidak boleh kosong';
+                        if (!isEditing && value.contains('@')) {
+                          return 'Username tidak boleh mengandung "@"';
+                        }
+                        return null;
+                      },
+                    ),
+                    const SizedBox(height: 10),
+                    TextFormField(
+                      controller: phoneController,
+                      decoration: const InputDecoration(
+                        labelText: 'Nomor Telepon',
+                        border: OutlineInputBorder(),
+                        isDense: true,
+                        contentPadding:
+                            EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                      ),
+                      keyboardType: TextInputType.phone,
+                    ),
+                    const SizedBox(height: 10),
+                    DropdownButtonFormField<String>(
+                      value: selectedDepartment,
+                      decoration: const InputDecoration(
+                        labelText: 'Departemen',
+                        border: OutlineInputBorder(),
+                        isDense: true,
+                        contentPadding:
+                            EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                      ),
+                      items: _departments
+                          .map((dep) =>
+                              DropdownMenuItem(value: dep, child: Text(dep)))
+                          .toList(),
+                      onChanged: (value) => setStateSB(() {
+                        selectedDepartment = value;
+                      }),
+                      validator: (value) => value == null || value.isEmpty
+                          ? 'Pilih departemen'
+                          : null,
+                    ),
+                    const SizedBox(height: 10),
+                    DropdownButtonFormField<String>(
+                      value: selectedRole,
+                      decoration: const InputDecoration(
+                        labelText: 'Role',
+                        border: OutlineInputBorder(),
+                        isDense: true,
+                        contentPadding:
+                            EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                      ),
+                      items: _roles
+                          .map((role) => DropdownMenuItem(
+                              value: role, child: Text(role.toUpperCase())))
+                          .toList(),
+                      onChanged: (value) => setStateSB(() {
+                        selectedRole = value;
+                      }),
+                      validator: (value) =>
+                          value == null || value.isEmpty ? 'Pilih role' : null,
+                    ),
+                    const SizedBox(height: 10),
+                    if (!isEditing) ...[
+                      TextFormField(
+                        controller: passwordController,
+                        decoration: InputDecoration(
+                          labelText: 'Password Pengguna Baru (min. 6 karakter)',
+                          border: const OutlineInputBorder(),
+                          isDense: true,
+                          contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 10),
+                          suffixIcon: IconButton(
+                            icon: Icon(
+                              _obscureNewPassword
+                                  ? Icons.visibility
+                                  : Icons.visibility_off,
+                            ),
+                            onPressed: () {
+                              setStateSB(() {
+                                _obscureNewPassword = !_obscureNewPassword;
+                              });
+                            },
+                          ),
+                        ),
+                        obscureText: _obscureNewPassword,
+                        validator: (value) => value!.length < 6
+                            ? 'Password minimal 6 karakter'
+                            : null,
+                      ),
+                      const SizedBox(height: 10),
+                    ],
+                    TextFormField(
+                      controller: adminPasswordController,
+                      decoration: InputDecoration(
+                        labelText: 'Sandi Admin Anda',
+                        border: const OutlineInputBorder(),
+                        isDense: true,
+                        contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 10),
+                        suffixIcon: IconButton(
+                          icon: Icon(
+                            _obscureAdminPassword
+                                ? Icons.visibility
+                                : Icons.visibility_off,
+                          ),
+                          onPressed: () {
+                            setStateSB(() {
+                              _obscureAdminPassword = !_obscureAdminPassword;
+                            });
+                          },
+                        ),
+                      ),
+                      obscureText: _obscureAdminPassword,
+                      validator: (value) => value!.isEmpty
+                          ? 'Sandi admin tidak boleh kosong.'
+                          : null,
+                    ),
+                  ],
                 ),
-              ],
+              ),
             ),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(),
-            child: const Text('Batal'),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              if (formKey.currentState!.validate()) {
-                if (selectedDepartment == null || selectedDepartment!.isEmpty) {
-                  _showNotification(
-                      'Validasi Gagal', 'Departemen tidak boleh kosong.',
-                      isError: true);
-                  return;
-                }
-                if (selectedRole == null || selectedRole!.isEmpty) {
-                  _showNotification(
-                      'Validasi Gagal', 'Role tidak boleh kosong.',
-                      isError: true);
-                  return;
-                }
-
-                final localDialogContext = dialogContext;
-                final String? currentAdminEmail = _auth.currentUser!.email;
-                final String currentAdminPassword =
-                    adminPasswordController.text.trim();
-
-                try {
-                  await _auth.signInWithEmailAndPassword(
-                      email: currentAdminEmail!,
-                      password: currentAdminPassword);
-
-                  if (isEditing) {
-                    await _firestore
-                        .collection('users')
-                        .doc(userToEdit.id)
-                        .update({
-                      'name': nameController.text.trim(),
-                      'phoneNumber': phoneController.text.trim(),
-                      'department': selectedDepartment,
-                      'role': selectedRole,
-                    });
-                    if (localDialogContext.mounted) {
-                      Navigator.of(localDialogContext).pop();
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(),
+                child: const Text('Batal'),
+              ),
+              ElevatedButton(
+                onPressed: () async {
+                  if (formKey.currentState!.validate()) {
+                    if (selectedDepartment == null ||
+                        selectedDepartment!.isEmpty) {
+                      _showNotification(
+                          'Validasi Gagal', 'Departemen tidak boleh kosong.',
+                          isError: true);
+                      return;
                     }
-                    _showNotification('Berhasil!',
-                        'Pengguna ${nameController.text} berhasil diperbarui.',
-                        isError: false);
-                  } else {
-                    final newUserCredential =
-                        await _auth.createUserWithEmailAndPassword(
-                            email: emailController.text.trim(),
-                            password: passwordController.text.trim());
-
-                    await _firestore
-                        .collection('users')
-                        .doc(newUserCredential.user!.uid)
-                        .set({
-                      'name': nameController.text.trim(),
-                      'email': emailController.text.trim(),
-                      'phoneNumber': phoneController.text.trim(),
-                      'department': selectedDepartment,
-                      'role': selectedRole,
-                      'createdAt': FieldValue.serverTimestamp(),
-                    });
-
-                    await _auth.signInWithEmailAndPassword(
-                        email: currentAdminEmail,
-                        password: currentAdminPassword);
-
-                    if (localDialogContext.mounted) {
-                      Navigator.of(localDialogContext).pop();
+                    if (selectedRole == null || selectedRole!.isEmpty) {
+                      _showNotification(
+                          'Validasi Gagal', 'Role tidak boleh kosong.',
+                          isError: true);
+                      return;
                     }
-                    _showNotification('Akun Berhasil Dibuat!',
-                        'Pengguna ${nameController.text} berhasil ditambahkan.',
-                        isError: false);
+
+                    final localDialogContext = dialogContext;
+                    final String? currentAdminEmail = _auth.currentUser!.email;
+                    final String currentAdminPassword =
+                        adminPasswordController.text.trim();
+                    final String userEmail = isEditing
+                        ? (userToEdit!.data() as Map<String, dynamic>)['email']
+                        : usernameController.text.trim() + _fictitiousDomain;
+
+                    try {
+                      await _auth.signInWithEmailAndPassword(
+                          email: currentAdminEmail!,
+                          password: currentAdminPassword);
+
+                      if (isEditing) {
+                        await _firestore
+                            .collection('users')
+                            .doc(userToEdit.id)
+                            .update({
+                          'name': nameController.text.trim(),
+                          'phoneNumber': phoneController.text.trim(),
+                          'department': selectedDepartment,
+                          'role': selectedRole,
+                        });
+                        if (localDialogContext.mounted) {
+                          Navigator.of(localDialogContext).pop();
+                        }
+                        _showNotification('Berhasil!',
+                            'Pengguna ${nameController.text} berhasil diperbarui.',
+                            isError: false);
+                      } else {
+                        final newUserCredential =
+                            await _auth.createUserWithEmailAndPassword(
+                                email: userEmail,
+                                password: passwordController.text.trim());
+
+                        await _firestore
+                            .collection('users')
+                            .doc(newUserCredential.user!.uid)
+                            .set({
+                          'name': nameController.text.trim(),
+                          'email': userEmail,
+                          'phoneNumber': phoneController.text.trim(),
+                          'department': selectedDepartment,
+                          'role': selectedRole,
+                          'createdAt': FieldValue.serverTimestamp(),
+                        });
+
+                        await _auth.signInWithEmailAndPassword(
+                            email: currentAdminEmail,
+                            password: currentAdminPassword);
+
+                        if (localDialogContext.mounted) {
+                          Navigator.of(localDialogContext).pop();
+                        }
+                        _showNotification('Akun Berhasil Dibuat!',
+                            'Pengguna ${nameController.text} berhasil ditambahkan.',
+                            isError: false);
+                      }
+                    } on FirebaseAuthException catch (e) {
+                      String message;
+                      if (e.code == 'wrong-password' ||
+                          e.code == 'invalid-credential') {
+                        message = 'Sandi admin salah.';
+                      } else if (e.code == 'email-already-in-use') {
+                        message = 'Username ini sudah terdaftar.';
+                      } else if (e.code == 'weak-password') {
+                        message = 'Password terlalu lemah.';
+                      } else {
+                        message = 'Gagal memproses akun: ${e.message}';
+                      }
+                      if (localDialogContext.mounted) {
+                        Navigator.of(localDialogContext).pop();
+                      }
+                      _showNotification('Gagal!', message, isError: true);
+                    } catch (e) {
+                      _showNotification('Error', 'Terjadi kesalahan umum: $e',
+                          isError: true);
+                      log('Error in add/edit user flow: $e');
+                      if (localDialogContext.mounted) {
+                        Navigator.of(localDialogContext).pop();
+                      }
+                    }
                   }
-                } on FirebaseAuthException catch (e) {
-                  String message;
-                  if (e.code == 'wrong-password' ||
-                      e.code == 'invalid-credential') {
-                    message = 'Sandi admin salah.';
-                  } else if (e.code == 'email-already-in-use') {
-                    message = 'Email ini sudah terdaftar.';
-                  } else if (e.code == 'weak-password') {
-                    message = 'Password terlalu lemah.';
-                  } else {
-                    message = 'Gagal memproses akun: ${e.message}';
-                  }
-                  if (localDialogContext.mounted) {
-                    Navigator.of(localDialogContext).pop();
-                  }
-                  _showNotification('Gagal!', message, isError: true);
-                } catch (e) {
-                  _showNotification('Error', 'Terjadi kesalahan umum: $e',
-                      isError: true);
-                  log('Error in add/edit user flow: $e');
-                  if (localDialogContext.mounted) {
-                    Navigator.of(localDialogContext).pop();
-                  }
-                }
-              }
-            },
-            child: Text(isEditing ? 'Simpan Perubahan' : 'Tambah Pengguna'),
-          ),
-        ],
+                },
+                child: Text(isEditing ? 'Simpan Perubahan' : 'Tambah Pengguna'),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
 
   Future<void> _deleteUser(String userId, String userName) async {
     try {
+      final userDoc = await _firestore.collection('users').doc(userId).get();
+      if (!userDoc.exists) {
+        _showNotification('Gagal!', 'Pengguna tidak ditemukan.', isError: true);
+        return;
+      }
+
+      final userData = userDoc.data() as Map<String, dynamic>;
+      if (userData['role'] == 'admin') {
+        _showNotification('Gagal Menghapus',
+            'Tidak dapat menghapus pengguna dengan peran admin.',
+            isError: true);
+        return;
+      }
+
       final confirm = await showDialog<bool>(
         context: context,
         builder: (dialogContext) => AlertDialog(
@@ -432,7 +492,8 @@ class _UsersScreenState extends State<UsersScreen> {
 
       List<String> headers = [
         'Nama Lengkap',
-        'Email',
+        'Username',
+        'Email Lengkap',
         'Nomor Telepon',
         'Departemen',
         'Role'
@@ -443,13 +504,17 @@ class _UsersScreenState extends State<UsersScreen> {
       for (int i = 0; i < usersData.length; i++) {
         final userData = usersData[i].data();
         String phoneNumber = userData['phoneNumber']?.toString() ?? '';
+        String email = userData['email'] ?? '';
+        String username = email.split('@')[0];
+
         if (phoneNumber.startsWith('0')) {
           phoneNumber = "'$phoneNumber";
         }
 
         List<dynamic> row = [
           userData['name'] ?? '',
-          userData['email'] ?? '',
+          username,
+          email,
           phoneNumber,
           userData['department'] ?? '',
           userData['role'] ?? '',
@@ -518,19 +583,19 @@ class _UsersScreenState extends State<UsersScreen> {
             .toList();
 
         final nameIndex = headerRow.indexOf('Nama Lengkap');
-        final emailIndex = headerRow.indexOf('Email');
+        final usernameIndex = headerRow.indexOf('Username');
         final phoneIndex = headerRow.indexOf('Nomor Telepon');
         final departmentIndex = headerRow.indexOf('Departemen');
         final roleIndex = headerRow.indexOf('Role');
         final passwordIndex = headerRow.indexOf('Password');
 
         if (nameIndex == -1 ||
-            emailIndex == -1 ||
+            usernameIndex == -1 ||
             departmentIndex == -1 ||
             roleIndex == -1 ||
             passwordIndex == -1) {
           _showNotification('Gagal Import',
-              'File Excel tidak memiliki semua kolom yang diperlukan (Nama Lengkap, Email, Nomor Telepon, Departemen, Role, Password).',
+              'File Excel tidak memiliki semua kolom yang diperlukan (Nama Lengkap, Username, Nomor Telepon, Departemen, Role, Password).',
               isError: true);
           return;
         }
@@ -546,24 +611,20 @@ class _UsersScreenState extends State<UsersScreen> {
         for (int i = 1; i < sheet.rows.length; i++) {
           final row = sheet.rows[i];
           final String name = (row[nameIndex]?.value?.toString().trim() ?? '');
-          final String email =
-              (row[emailIndex]?.value?.toString().trim() ?? '');
+          final String username =
+              (row[usernameIndex]?.value?.toString().trim() ?? '');
+          final String email = username + _fictitiousDomain;
           final String phoneNumber =
               (row[phoneIndex]?.value?.toString().trim() ?? '');
-          final String department =
-              (row[departmentIndex]?.value?.toString().trim() ?? '');
           String role = (row[roleIndex]?.value?.toString().trim() ?? 'staff')
               .toLowerCase();
           final String password =
               (row[passwordIndex]?.value?.toString().trim() ?? '');
+          final String department =
+              (row[departmentIndex]?.value?.toString().trim() ?? '');
 
-          if (name.isEmpty || email.isEmpty || password.isEmpty) {
-            log('Skipping row $i: Nama, Email, atau Password kosong.');
-            failedCount++;
-            continue;
-          }
-          if (!email.contains('@') || !email.contains('.')) {
-            log('Skipping row $i: Format email tidak valid.');
+          if (name.isEmpty || username.isEmpty || password.isEmpty) {
+            log('Skipping row $i: Nama, Username, atau Password kosong.');
             failedCount++;
             continue;
           }
@@ -668,7 +729,7 @@ class _UsersScreenState extends State<UsersScreen> {
 
       List<String> headers = [
         'Nama Lengkap',
-        'Email',
+        'Username',
         'Nomor Telepon',
         'Departemen',
         'Role',
@@ -761,7 +822,8 @@ class _UsersScreenState extends State<UsersScreen> {
               child: TextField(
                 controller: _searchController,
                 decoration: InputDecoration(
-                  hintText: 'Cari pengguna (nama, email, departemen, role)...',
+                  hintText:
+                      'Cari pengguna (nama, username, departemen, role)...',
                   prefixIcon: const Icon(Icons.search),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(8.0),
@@ -836,6 +898,7 @@ class _UsersScreenState extends State<UsersScreen> {
                 final String lowerCaseQuery = _searchQuery.toLowerCase();
                 final String name = (data['name'] ?? '').toLowerCase();
                 final String email = (data['email'] ?? '').toLowerCase();
+                final String username = email.split('@')[0];
                 final String department =
                     (data['department'] ?? '').toLowerCase();
                 final String role = (data['role'] ?? '').toLowerCase();
@@ -843,6 +906,7 @@ class _UsersScreenState extends State<UsersScreen> {
                     (data['phoneNumber'] ?? '').toLowerCase();
 
                 return name.contains(lowerCaseQuery) ||
+                    username.contains(lowerCaseQuery) ||
                     email.contains(lowerCaseQuery) ||
                     department.contains(lowerCaseQuery) ||
                     role.contains(lowerCaseQuery) ||

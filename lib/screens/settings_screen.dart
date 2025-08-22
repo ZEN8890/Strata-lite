@@ -1,10 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart'; // Untuk mendapatkan user yang sedang login
-import 'package:cloud_firestore/cloud_firestore.dart'; // Untuk mengambil data user dari Firestore
-import 'dart:developer'; // Untuk log.log()
-import 'package:another_flushbar/flushbar.dart'; // Untuk notifikasi
-// Import the LoginScreen to navigate to it
-import 'package:Strata_lite/screens/login_screen.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'dart:developer';
+import 'package:another_flushbar/flushbar.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -16,33 +15,37 @@ class SettingsScreen extends StatefulWidget {
 class _SettingsScreenState extends State<SettingsScreen> {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final FirebaseFunctions _functions = FirebaseFunctions.instance;
 
   User? _currentUser;
 
-  // Controllers untuk input yang bisa diedit
   final TextEditingController _nameController = TextEditingController();
-  final TextEditingController _emailController =
-      TextEditingController(); // Email biasanya tidak diedit langsung
+  final TextEditingController _emailController = TextEditingController();
   final TextEditingController _phoneController = TextEditingController();
+  final TextEditingController _newPasswordController = TextEditingController();
+  final TextEditingController _adminPasswordController =
+      TextEditingController();
 
-  String? _selectedDepartment; // State untuk Dropdown Departemen
+  String? _selectedDepartment;
 
   bool _isLoading = true;
+  bool _isResettingPassword = false;
   String? _errorMessage;
 
-  // Contoh daftar departemen (bisa diambil dari Firestore juga di masa depan)
   final List<String> _departments = [
-    'Marketing',
-    'Sales', // New
+    'A&G',
+    'ENGINEERING',
+    'FB PRODUCT',
+    'FB SERVICE',
+    'FINANCE',
+    'FRONT OFFICE',
+    'HOUSEKEEPING',
     'HR',
-    'Finance', // New
-    'FO', // New
-    'FBS', // New
-    'FBP', // New
-    'HK', // New
-    'Engineering', // New
-    'Security', // New
-    'IT'
+    'IT',
+    'Marketing',
+    'SALES',
+    'SALES & MARKETING',
+    'Security',
   ];
 
   @override
@@ -56,10 +59,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _nameController.dispose();
     _emailController.dispose();
     _phoneController.dispose();
+    _newPasswordController.dispose();
+    _adminPasswordController.dispose();
     super.dispose();
   }
 
-  // Fungsi untuk menampilkan notifikasi yang diperbagus
   void _showNotification(String title, String message, {bool isError = false}) {
     if (!context.mounted) return;
 
@@ -109,8 +113,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       return;
     }
 
-    _emailController.text =
-        _currentUser!.email ?? 'N/A'; // Email dari FirebaseAuth
+    _emailController.text = _currentUser!.email ?? 'N/A';
 
     try {
       DocumentSnapshot userDoc =
@@ -120,15 +123,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
         Map<String, dynamic> userData = userDoc.data() as Map<String, dynamic>;
         _nameController.text = userData['name'] ?? '';
         _phoneController.text = userData['phoneNumber'] ?? '';
-        _selectedDepartment =
-            userData['department']; // Set departemen yang dipilih
+        _selectedDepartment = userData['department'];
         log('User data loaded: Name=${_nameController.text}, Email=${_emailController.text}, Department=$_selectedDepartment, Phone=${_phoneController.text}');
       } else {
-        // Jika dokumen user tidak ada, set nilai default
         _nameController.text = 'Nama Tidak Ditemukan';
         _phoneController.text = '';
-        _selectedDepartment =
-            null; // Atau set ke _departments.first jika ingin default
+        _selectedDepartment = null;
         log('Warning: User document not found in Firestore for UID: ${_currentUser!.uid}');
       }
     } catch (e) {
@@ -165,18 +165,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
     });
 
     try {
-      await _firestore.collection('users').doc(_currentUser!.uid).set(
-          {
-            'name': _nameController.text.trim(),
-            'email': _emailController.text
-                .trim(), // Pastikan email juga disimpan jika perlu
-            'phoneNumber': _phoneController.text.trim(),
-            'department': _selectedDepartment,
-            // Anda bisa menambahkan field lain seperti 'role' di sini jika belum ada
-          },
-          SetOptions(
-              merge:
-                  true)); // Gunakan merge: true agar tidak menimpa field lain
+      await _firestore.collection('users').doc(_currentUser!.uid).set({
+        'name': _nameController.text.trim(),
+        'email': _emailController.text.trim(),
+        'phoneNumber': _phoneController.text.trim(),
+        'department': _selectedDepartment,
+      }, SetOptions(merge: true));
 
       _showNotification('Berhasil!', 'Profil berhasil diperbarui.',
           isError: false);
@@ -191,34 +185,141 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
-  // --- START NEW LOGOUT FUNCTION ---
-  Future<void> _logout() async {
+  Future<void> _resetPassword() async {
+    bool _obscureNewPassword = true;
+    bool _obscureAdminPassword = true;
+
+    final _formKey = GlobalKey<FormState>();
+
+    bool? confirm = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setStateSB) {
+          return AlertDialog(
+            title: const Text('Reset Password'),
+            content: SingleChildScrollView(
+              child: Form(
+                key: _formKey,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    TextFormField(
+                      controller: _newPasswordController,
+                      decoration: InputDecoration(
+                        labelText: 'Password Baru (min. 6 karakter)',
+                        suffixIcon: IconButton(
+                          icon: Icon(
+                            _obscureNewPassword
+                                ? Icons.visibility
+                                : Icons.visibility_off,
+                          ),
+                          onPressed: () {
+                            setStateSB(() {
+                              _obscureNewPassword = !_obscureNewPassword;
+                            });
+                          },
+                        ),
+                      ),
+                      obscureText: _obscureNewPassword,
+                      validator: (value) => value!.length < 6
+                          ? 'Password minimal 6 karakter'
+                          : null,
+                    ),
+                    const SizedBox(height: 10),
+                    TextFormField(
+                      controller: _adminPasswordController,
+                      decoration: InputDecoration(
+                        labelText: 'Sandi Admin Saat Ini',
+                        suffixIcon: IconButton(
+                          icon: Icon(
+                            _obscureAdminPassword
+                                ? Icons.visibility
+                                : Icons.visibility_off,
+                          ),
+                          onPressed: () {
+                            setStateSB(() {
+                              _obscureAdminPassword = !_obscureAdminPassword;
+                            });
+                          },
+                        ),
+                      ),
+                      obscureText: _obscureAdminPassword,
+                      validator: (value) => value!.isEmpty
+                          ? 'Sandi admin tidak boleh kosong.'
+                          : null,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(false),
+                child: const Text('Batal'),
+              ),
+              ElevatedButton(
+                onPressed: () {
+                  if (_formKey.currentState!.validate()) {
+                    Navigator.of(dialogContext).pop(true);
+                  }
+                },
+                child: const Text('Reset'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+
+    if (confirm != true) {
+      _newPasswordController.clear();
+      _adminPasswordController.clear();
+      return;
+    }
+
     setState(() {
-      _isLoading = true; // Show loading indicator during logout
+      _isResettingPassword = true;
     });
+
     try {
-      await _auth.signOut();
-      if (!context.mounted) return;
-      // Navigate to LoginScreen and remove all previous routes
-      Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(builder: (context) => const LoginScreen()),
-        (Route<dynamic> route) =>
-            false, // This predicate ensures all routes are removed
+      // Re-authenticate admin user
+      await _auth.signInWithEmailAndPassword(
+        email: _currentUser!.email!,
+        password: _adminPasswordController.text.trim(),
       );
-      _showNotification('Logout Berhasil', 'Anda telah berhasil keluar.',
+
+      // Call Cloud Function to reset password securely
+      final HttpsCallable callable =
+          _functions.httpsCallable('updateUserPassword');
+      await callable.call({
+        'uid': _currentUser!.uid,
+        'password': _newPasswordController.text.trim(),
+      });
+
+      _showNotification('Berhasil!', 'Password berhasil direset.',
           isError: false);
-      log('User logged out successfully.');
+      _newPasswordController.clear();
+      _adminPasswordController.clear();
+    } on FirebaseAuthException catch (e) {
+      String message;
+      if (e.code == 'wrong-password' || e.code == 'invalid-credential') {
+        message = 'Sandi admin salah.';
+      } else if (e.code == 'weak-password') {
+        message = 'Password terlalu lemah.';
+      } else {
+        message = 'Gagal mereset sandi: ${e.message}';
+      }
+      _showNotification('Gagal!', message, isError: true);
+      log('Error resetting password: ${e.message}');
     } catch (e) {
-      _showNotification('Logout Gagal', 'Terjadi kesalahan saat logout: $e',
-          isError: true);
-      log('Error during logout: $e');
+      _showNotification('Gagal!', 'Terjadi kesalahan umum: $e', isError: true);
+      log('Error resetting password: $e');
     } finally {
       setState(() {
-        _isLoading = false;
+        _isResettingPassword = false;
       });
     }
   }
-  // --- END NEW LOGOUT FUNCTION ---
 
   @override
   Widget build(BuildContext context) {
@@ -235,7 +336,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ),
                 )
               : ListView(
-                  // Menggunakan ListView agar bisa discroll
                   children: [
                     Text(
                       'Pengaturan Profil',
@@ -252,10 +352,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
+                            // Nama Lengkap: dibuat readOnly
                             TextField(
                               controller: _nameController,
-                              // == PERUBAHAN DI SINI ==
-                              readOnly: true,
+                              readOnly: true, // <-- Perubahan di sini
                               decoration: const InputDecoration(
                                 labelText: 'Nama Lengkap',
                                 border: OutlineInputBorder(),
@@ -265,8 +365,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             const SizedBox(height: 15),
                             TextField(
                               controller: _emailController,
-                              readOnly:
-                                  true, // Email biasanya tidak bisa diedit langsung
+                              readOnly: true,
                               decoration: const InputDecoration(
                                 labelText: 'Email',
                                 border: OutlineInputBorder(),
@@ -276,7 +375,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             const SizedBox(height: 15),
                             TextField(
                               controller: _phoneController,
-                              // == PERUBAHAN DI SINI ==
                               readOnly: false,
                               decoration: const InputDecoration(
                                 labelText: 'Nomor Telepon',
@@ -286,11 +384,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               keyboardType: TextInputType.phone,
                             ),
                             const SizedBox(height: 15),
+                            // Departemen: Dibuat tidak bisa diubah dengan menonaktifkan onChanged
                             DropdownButtonFormField<String>(
-                              value:
-                                  _selectedDepartment, // Gunakan _selectedDepartment
-                              // == PERUBAHAN DI SINI ==
-                              onChanged: null,
+                              value: _selectedDepartment,
+                              onChanged: null, // <-- Perubahan di sini
                               decoration: const InputDecoration(
                                 labelText: 'Departemen',
                                 border: OutlineInputBorder(),
@@ -302,43 +399,35 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                   child: Text(department),
                                 );
                               }).toList(),
-                              validator: (value) {
-                                if (value == null || value.isEmpty) {
-                                  return 'Departemen tidak boleh kosong';
-                                }
-                                return null;
-                              },
+                              // Validator dihapus karena onChanged null, jadi tidak perlu divalidasi
                             ),
                           ],
                         ),
                       ),
                     ),
                     const SizedBox(height: 20),
-                    Center(
-                      child: ElevatedButton(
-                        onPressed: _saveUserData, // Panggil fungsi simpan
-                        child: _isLoading
-                            ? const CircularProgressIndicator(
-                                color: Colors.white)
-                            : const Text('Simpan Perubahan'),
-                      ),
+                    ElevatedButton(
+                      onPressed: _saveUserData,
+                      child: _isLoading
+                          ? const CircularProgressIndicator(color: Colors.white)
+                          : const Text('Simpan Perubahan'),
                     ),
-                    const SizedBox(height: 20), // Spacer for logout button
+                    const SizedBox(height: 20),
                     Center(
                       child: ElevatedButton.icon(
-                        // New Logout Button
-                        onPressed:
-                            _isLoading ? null : _logout, // Disable if loading
-                        icon: _isLoading
+                        onPressed: _isResettingPassword ? null : _resetPassword,
+                        icon: _isResettingPassword
                             ? const SizedBox(
                                 width: 20,
                                 height: 20,
                                 child: CircularProgressIndicator(
                                     color: Colors.white, strokeWidth: 2))
-                            : const Icon(Icons.logout),
-                        label: Text(_isLoading ? 'Logging out...' : 'Logout'),
+                            : const Icon(Icons.lock_reset),
+                        label: Text(_isResettingPassword
+                            ? 'Mereset...'
+                            : 'Reset Password'),
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.red, // Red for logout
+                          backgroundColor: Colors.orange,
                           foregroundColor: Colors.white,
                           padding: const EdgeInsets.symmetric(
                               horizontal: 20, vertical: 12),

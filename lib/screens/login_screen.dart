@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart'; // Import Firebase Auth
-import 'package:shared_preferences/shared_preferences.dart'; // Import shared_preferences
-import 'package:cloud_firestore/cloud_firestore.dart'; // Import Cloud Firestore to read user roles
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:another_flushbar/flushbar.dart';
+import 'dart:developer';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -11,58 +13,65 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  final TextEditingController _emailController = TextEditingController();
+  final TextEditingController _usernameController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
+  final _formKey = GlobalKey<FormState>();
+
+  bool _isLoading = false;
+  bool _rememberMe = false;
+  bool _obscurePassword = true;
 
   final FirebaseAuth _auth = FirebaseAuth.instance;
-  final FirebaseFirestore _firestore =
-      FirebaseFirestore.instance; // Add Firestore instance
-
-  bool _rememberMe = false; // State untuk checkbox "Remember Me"
-  bool _obscurePassword = true; // State untuk toggle tampil/sembunyi password
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
   @override
   void initState() {
     super.initState();
-    _loadRememberedEmail(); // Muat email yang disimpan saat screen diinisialisasi
+    _loadRememberedUsername();
   }
 
   @override
   void dispose() {
-    _emailController.dispose();
+    _usernameController.dispose();
     _passwordController.dispose();
     super.dispose();
   }
 
-  // Fungsi untuk memuat email yang disimpan
-  void _loadRememberedEmail() async {
+  void _loadRememberedUsername() async {
     final prefs = await SharedPreferences.getInstance();
-    final rememberedEmail = prefs.getString('remembered_email');
-    if (rememberedEmail != null && rememberedEmail.isNotEmpty) {
+    final rememberedUsername = prefs.getString('remembered_username');
+    if (rememberedUsername != null && rememberedUsername.isNotEmpty) {
       setState(() {
-        _emailController.text = rememberedEmail;
-        _rememberMe = true; // Set checkbox ke true jika email ditemukan
+        _usernameController.text = rememberedUsername;
+        _rememberMe = true;
       });
     }
   }
 
-  // Fungsi untuk menyimpan email jika "Remember Me" dicentang
-  void _saveRememberedEmail(String email) async {
+  void _saveRememberedUsername(String username) async {
     final prefs = await SharedPreferences.getInstance();
     if (_rememberMe) {
-      await prefs.setString('remembered_email', email);
+      await prefs.setString('remembered_username', username);
     } else {
-      await prefs.remove('remembered_email'); // Hapus jika tidak dicentang
+      await prefs.remove('remembered_username');
     }
   }
 
   void _performLogin() async {
-    String email = _emailController.text.trim();
-    String password = _passwordController.text.trim();
+    if (!_formKey.currentState!.validate()) return;
 
-    if (email.isEmpty || password.isEmpty) {
-      _showMessage('Email dan Password tidak boleh kosong!');
-      return;
+    setState(() {
+      _isLoading = true;
+    });
+
+    final String userInput = _usernameController.text.trim();
+    final String password = _passwordController.text.trim();
+    String email;
+
+    if (userInput.contains('@')) {
+      email = userInput;
+    } else {
+      email = '$userInput@strata.com';
     }
 
     try {
@@ -74,118 +83,149 @@ class _LoginScreenState extends State<LoginScreen> {
       User? user = userCredential.user;
 
       if (user != null) {
-        // Simpan email jika "Remember Me" dicentang
-        _saveRememberedEmail(email);
+        _saveRememberedUsername(userInput);
 
-        // --- UPDATED LOGIC FOR USER ROLE HANDLING (from previous solution) ---
-        if (!context.mounted) return; // Check context before async operations
+        if (!context.mounted) return;
 
         try {
           DocumentSnapshot userDoc =
               await _firestore.collection('users').doc(user.uid).get();
           if (userDoc.exists) {
-            String role = (userDoc.data() as Map<String, dynamic>)['role'] ??
-                'staff'; // Default ke staff jika role tidak ada
+            String role =
+                (userDoc.data() as Map<String, dynamic>)['role'] ?? 'staff';
             if (role == 'admin') {
-              _showMessage('Login Berhasil sebagai Admin: ${user.email}!');
+              _showNotification('Login Berhasil', 'Selamat datang, Admin!');
               if (!context.mounted) return;
               Navigator.pushReplacementNamed(context, '/admin_dashboard');
             } else {
-              _showMessage(
-                  'Login Berhasil sebagai Pengguna Biasa (Staff): ${user.email}!');
+              _showNotification('Login Berhasil', 'Selamat datang, Staff!');
               if (!context.mounted) return;
               Navigator.pushReplacementNamed(context, '/staff_dashboard');
             }
           } else {
-            // If user document not found, default to staff dashboard and show a warning
-            _showMessage(
-                'Login Berhasil, tetapi data profil tidak lengkap. Anda dialihkan ke dasbor staff.');
+            // Jika dokumen pengguna tidak ditemukan, buat yang baru dengan data default
+            await _firestore.collection('users').doc(user.uid).set({
+              'name': user.email?.split('@')[0] ?? 'Admin Pertama',
+              'email': user.email,
+              'phoneNumber': '',
+              'department': 'IT',
+              'role': 'admin',
+              'createdAt': FieldValue.serverTimestamp(),
+            });
+            _showNotification('Login Berhasil', 'Selamat datang, Admin!');
             if (!context.mounted) return;
-            Navigator.pushReplacementNamed(context, '/staff_dashboard');
-            print(
-                'Warning: User document not found for UID: ${user.uid} during login, defaulting to staff dashboard.');
+            Navigator.pushReplacementNamed(context, '/admin_dashboard');
           }
         } catch (e) {
-          _showMessage(
-              'Error saat mengambil peran pengguna: $e. Dialihkan ke dasbor staff.');
+          _showNotification('Error',
+              'Gagal mengambil peran pengguna: $e. Dialihkan ke dasbor staff.',
+              isError: true);
           if (!context.mounted) return;
-          Navigator.pushReplacementNamed(
-              context, '/staff_dashboard'); // Fallback if error fetching role
-          print('Error fetching user role during login: $e');
+          Navigator.pushReplacementNamed(context, '/staff_dashboard');
+          log('Error fetching user role during login: $e');
         }
-        // --- END UPDATED LOGIC ---
       } else {
-        _showMessage('Login Gagal: Pengguna tidak ditemukan.');
+        _showNotification('Login Gagal', 'Pengguna tidak ditemukan.',
+            isError: true);
       }
     } on FirebaseAuthException catch (e) {
-      String message;
-      if (e.code == 'user-not-found') {
-        message = 'Tidak ada pengguna dengan email tersebut.';
-      } else if (e.code == 'wrong-password') {
-        message = 'Password salah untuk email tersebut.';
+      log('Firebase Auth Error: ${e.code}');
+      String errorMessage =
+          'Gagal login. Mohon periksa kembali username dan password Anda.';
+      if (e.code == 'user-not-found' || e.code == 'wrong-password') {
+        errorMessage = 'Username atau password salah.';
       } else if (e.code == 'invalid-email') {
-        message = 'Format email tidak valid.';
+        errorMessage = 'Format input tidak valid.';
       } else if (e.code == 'too-many-requests') {
-        message = 'Terlalu banyak percobaan login gagal. Coba lagi nanti.';
-      } else {
-        message = 'Terjadi kesalahan otentikasi: ${e.message}';
+        errorMessage = 'Terlalu banyak percobaan login gagal. Coba lagi nanti.';
       }
-      _showMessage(message);
-      print('Firebase Auth Error: ${e.code} - ${e.message}');
+      _showNotification('Login Gagal', errorMessage, isError: true);
     } catch (e) {
-      _showMessage('Terjadi kesalahan yang tidak terduga: $e');
-      print('General Login Error: $e');
+      log('Login Error: $e');
+      _showNotification(
+          'Login Gagal', 'Terjadi kesalahan yang tidak terduga: $e',
+          isError: true);
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
     }
   }
 
-  void _showMessage(String message) {
+  void _showNotification(String title, String message, {bool isError = false}) {
     if (!context.mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
-    );
+    Flushbar(
+      titleText: Text(
+        title,
+        style: TextStyle(
+          fontWeight: FontWeight.bold,
+          fontSize: 16.0,
+          color: isError ? Colors.red[900] : Colors.green[900],
+        ),
+      ),
+      messageText: Text(
+        message,
+        style: TextStyle(
+          fontSize: 14.0,
+          color: isError ? Colors.red[800] : Colors.green[800],
+        ),
+      ),
+      flushbarPosition: FlushbarPosition.TOP,
+      flushbarStyle: FlushbarStyle.FLOATING,
+      backgroundColor: isError ? Colors.red[100]! : Colors.green[100]!,
+      margin: const EdgeInsets.all(8),
+      borderRadius: BorderRadius.circular(8),
+      icon: Icon(
+        isError ? Icons.error_outline : Icons.check_circle_outline,
+        color: isError ? Colors.red[800] : Colors.green[800],
+      ),
+      duration: const Duration(seconds: 3),
+    ).show(context);
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Login')),
+      appBar: AppBar(
+        title: const Text('Login'),
+        centerTitle: true,
+        automaticallyImplyLeading: false,
+      ),
       body: Center(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.all(20.0),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Image.asset(
-                'assets/Strata_logo.png',
-                height: 100,
-              ),
-              const SizedBox(height: 30),
-              SizedBox(
-                width: 300,
-                child: TextField(
-                  controller: _emailController,
+          padding: const EdgeInsets.all(24.0),
+          child: Form(
+            key: _formKey,
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Image.asset('assets/Strata_logo.png', height: 120),
+                const SizedBox(height: 48.0),
+                TextFormField(
+                  controller: _usernameController,
                   decoration: const InputDecoration(
-                    labelText: 'Email',
+                    labelText: 'Username atau Email Lengkap',
                     border: OutlineInputBorder(),
-                    prefixIcon: Icon(Icons.email),
+                    prefixIcon: Icon(Icons.person),
                   ),
-                  keyboardType: TextInputType.emailAddress,
+                  validator: (value) {
+                    if (value == null || value.isEmpty) {
+                      return 'Input tidak boleh kosong';
+                    }
+                    return null;
+                  },
                 ),
-              ),
-              const SizedBox(height: 20),
-              SizedBox(
-                width: 300,
-                child: TextField(
+                const SizedBox(height: 16.0),
+                TextFormField(
                   controller: _passwordController,
-                  obscureText:
-                      _obscurePassword, // Controlled by _obscurePassword state
                   decoration: InputDecoration(
-                    // Use InputDecoration for suffixIcon
                     labelText: 'Password',
                     border: const OutlineInputBorder(),
                     prefixIcon: const Icon(Icons.lock),
                     suffixIcon: IconButton(
-                      // Add toggle button for password visibility
                       icon: Icon(
                         _obscurePassword
                             ? Icons.visibility
@@ -193,17 +233,21 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                       onPressed: () {
                         setState(() {
-                          _obscurePassword = !_obscurePassword; // Toggle state
+                          _obscurePassword = !_obscurePassword;
                         });
                       },
                     ),
                   ),
+                  obscureText: _obscurePassword,
+                  validator: (value) {
+                    if (value == null || value.isEmpty) {
+                      return 'Password tidak boleh kosong';
+                    }
+                    return null;
+                  },
                 ),
-              ),
-              const SizedBox(height: 10),
-              SizedBox(
-                width: 300,
-                child: Row(
+                const SizedBox(height: 10),
+                Row(
                   children: [
                     Checkbox(
                       value: _rememberMe,
@@ -216,20 +260,20 @@ class _LoginScreenState extends State<LoginScreen> {
                     const Text('Ingat Saya'),
                   ],
                 ),
-              ),
-              const SizedBox(height: 30),
-              SizedBox(
-                width: 300,
-                height: 50,
-                child: ElevatedButton(
-                  onPressed: _performLogin,
-                  child: const Text(
-                    'Login',
-                    style: TextStyle(fontSize: 18),
-                  ),
-                ),
-              ),
-            ],
+                const SizedBox(height: 24.0),
+                _isLoading
+                    ? const Center(child: CircularProgressIndicator())
+                    : ElevatedButton(
+                        onPressed: _performLogin,
+                        style: ElevatedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 16.0),
+                          backgroundColor: Theme.of(context).primaryColor,
+                          foregroundColor: Colors.white,
+                        ),
+                        child: const Text('Masuk'),
+                      ),
+              ],
+            ),
           ),
         ),
       ),

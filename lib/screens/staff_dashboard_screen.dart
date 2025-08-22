@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:Strata_lite/screens/take_item_screen.dart'; // Import halaman Ambil Barang
+import 'package:Strata_lite/screens/scan_barcode.dart'; // Import halaman Ambil Barang
 import 'package:Strata_lite/screens/settings_screen.dart'; // Import halaman Pengaturan
 import 'dart:developer'; // Untuk log.log()
 
@@ -26,7 +26,7 @@ class _StaffDashboardScreenState extends State<StaffDashboardScreen> {
 
   // Daftar halaman yang dapat diakses staff
   final List<Widget> _pages = [
-    const TakeItemScreen(), // Indeks 0: Halaman Ambil Barang
+    const ScanBarcodeScreen(), // Indeks 0: Halaman Ambil Barang
     const SettingsScreen(), // Indeks 1: Halaman Pengaturan
   ];
 
@@ -127,7 +127,8 @@ class _StaffDashboardScreenState extends State<StaffDashboardScreen> {
     if (confirm == true) {
       await FirebaseAuth.instance.signOut();
       if (!context.mounted) return;
-      Navigator.pushReplacementNamed(context, '/');
+      // Navigate to login screen and remove all previous routes
+      Navigator.pushNamedAndRemoveUntil(context, '/', (route) => false);
     }
   }
 
@@ -190,7 +191,7 @@ class _StaffDashboardScreenState extends State<StaffDashboardScreen> {
               leading: const Icon(Icons.shopping_cart),
               title: const Text('Ambil Barang'),
               onTap: () {
-                _onItemTapped(0); // Indeks 0 untuk TakeItemScreen
+                _onItemTapped(0); // Indeks 0 untuk ScanBarcodeScreen
                 Navigator.pop(context);
               },
             ),

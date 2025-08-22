@@ -1,4 +1,3 @@
-// Path: lib/screens/take_item_screen.dart
 import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'dart:async';
@@ -10,14 +9,14 @@ import 'package:Strata_lite/models/log_entry.dart';
 import 'package:another_flushbar/flushbar.dart';
 import 'package:audioplayers/audioplayers.dart';
 
-class TakeItemScreen extends StatefulWidget {
-  const TakeItemScreen({super.key});
+class ScanBarcodeScreen extends StatefulWidget {
+  const ScanBarcodeScreen({super.key});
 
   @override
-  State<TakeItemScreen> createState() => _TakeItemScreenState();
+  State<ScanBarcodeScreen> createState() => _ScanBarcodeScreenState();
 }
 
-class _TakeItemScreenState extends State<TakeItemScreen> {
+class _ScanBarcodeScreenState extends State<ScanBarcodeScreen> {
   final TextEditingController _barcodeController = TextEditingController();
   final TextEditingController _quantityController = TextEditingController();
   final TextEditingController _remarksController = TextEditingController();
@@ -31,6 +30,8 @@ class _TakeItemScreenState extends State<TakeItemScreen> {
 
   Item? _scannedItem;
   bool _isQuantityBased = true;
+  String _userRole = 'staff';
+  bool _isAdding = true;
 
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
@@ -44,6 +45,29 @@ class _TakeItemScreenState extends State<TakeItemScreen> {
       detectionSpeed: DetectionSpeed.normal,
       facing: CameraFacing.back,
     );
+    _fetchUserRole();
+  }
+
+  Future<void> _fetchUserRole() async {
+    User? currentUser = _auth.currentUser;
+    if (currentUser != null) {
+      try {
+        DocumentSnapshot userDoc =
+            await _firestore.collection('users').doc(currentUser.uid).get();
+        if (userDoc.exists) {
+          final userData = userDoc.data() as Map<String, dynamic>;
+          setState(() {
+            _userRole = userData['role'] ?? 'staff';
+            if (_userRole == 'staff') {
+              _isAdding = false; // Set to 'take' for staff
+            }
+          });
+          log('User role fetched: $_userRole');
+        }
+      } catch (e) {
+        log('Error fetching user role: $e');
+      }
+    }
   }
 
   @override
@@ -197,7 +221,7 @@ class _TakeItemScreenState extends State<TakeItemScreen> {
     }
   }
 
-  Future<void> _takeItem() async {
+  Future<void> _processItem() async {
     if (_scannedItem == null) {
       _showNotification('Item Belum Dipindai',
           'Silakan pindai atau masukkan barcode item terlebih dahulu.',
@@ -206,54 +230,57 @@ class _TakeItemScreenState extends State<TakeItemScreen> {
     }
 
     if (_isQuantityBased) {
-      int? quantityTaken = int.tryParse(_quantityController.text.trim());
-      if (quantityTaken == null || quantityTaken <= 0) {
-        _showNotification(
-            'Kuantitas Invalid', 'Kuantitas yang diambil harus lebih dari 0.',
+      int? quantity = int.tryParse(_quantityController.text.trim());
+      if (quantity == null || quantity <= 0) {
+        _showNotification('Kuantitas Invalid', 'Kuantitas harus lebih dari 0.',
             isError: true);
         return;
       }
-      if (quantityTaken > _scannedItem!.quantityOrRemark) {
+
+      int newQuantity = _isAdding ? quantity : -quantity;
+
+      if (!_isAdding && quantity > _scannedItem!.quantityOrRemark) {
         _showNotification('Stok Tidak Cukup',
-            'Kuantitas yang diambil ($quantityTaken) melebihi stok yang tersedia (${_scannedItem!.quantityOrRemark}).',
+            'Kuantitas yang diambil ($quantity) melebihi stok yang tersedia (${_scannedItem!.quantityOrRemark}).',
             isError: true);
         return;
       }
 
       try {
         await _firestore.collection('items').doc(_scannedItem!.id).update({
-          'quantityOrRemark': FieldValue.increment(-quantityTaken),
+          'quantityOrRemark': FieldValue.increment(newQuantity),
         });
 
-        // Ambil dokumen terbaru setelah update
         DocumentSnapshot updatedItemDoc =
             await _firestore.collection('items').doc(_scannedItem!.id).get();
         int? updatedStock =
             (updatedItemDoc.data() as Map<String, dynamic>)['quantityOrRemark'];
 
-        _showNotification('Stok Berhasil Dikurangi',
-            'Stok item "${_scannedItem!.name}" dikurangi sebanyak $quantityTaken. Sisa Stok: $updatedStock',
+        String operation = _isAdding ? 'Ditambahkan' : 'Dikurangi';
+
+        _showNotification('Stok Berhasil $operation',
+            'Stok item "${_scannedItem!.name}" $operation sebanyak $quantity. Sisa Stok: $updatedStock',
             isError: false);
 
         await _addLogEntry(
           _scannedItem!,
-          quantityTaken,
+          newQuantity,
           remarks: _remarksController.text.trim().isEmpty
               ? null
               : _remarksController.text.trim(),
           remainingStock: updatedStock,
         );
       } catch (e) {
-        _showNotification('Gagal Mengurangi Stok', 'Gagal mengurangi stok: $e',
+        _showNotification('Gagal Memproses Stok', 'Gagal memproses stok: $e',
             isError: true);
-        log('Error reducing stock: $e');
+        log('Error processing stock: $e');
         return;
       }
     } else {
       String remarks = _remarksController.text.trim();
       if (remarks.isEmpty) {
-        _showNotification('Remarks Kosong',
-            'Remarks pengambilan tidak boleh kosong untuk item ini.',
+        _showNotification(
+            'Remarks Kosong', 'Remarks tidak boleh kosong untuk item ini.',
             isError: true);
         return;
       }
@@ -370,100 +397,175 @@ class _TakeItemScreenState extends State<TakeItemScreen> {
               )
             : ListView(
                 children: [
-                  const SizedBox(height: 20),
-                  TextField(
-                    controller: _barcodeController,
-                    readOnly: _isLoading,
-                    decoration: InputDecoration(
-                      labelText: 'Barcode EAN-13',
-                      border: const OutlineInputBorder(),
-                      suffixIcon: _isLoading
-                          ? const Padding(
-                              padding: EdgeInsets.all(8.0),
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : IconButton(
-                              icon: const Icon(Icons.qr_code_scanner),
-                              onPressed: _startScanBarcode,
-                            ),
-                    ),
-                    keyboardType: TextInputType.number,
-                    onSubmitted: (value) {
-                      if (value.length == 13) {
-                        _fetchItemDetails(value);
-                      } else {
-                        _showNotification(
-                            'Barcode Invalid', 'Barcode harus 13 digit.',
-                            isError: true);
-                      }
-                    },
-                  ),
-                  const SizedBox(height: 15),
-                  if (_scannedItem != null) ...[
+                  if (_userRole == 'admin')
                     Card(
-                      margin: const EdgeInsets.symmetric(vertical: 10),
+                      elevation: 4,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
                       child: Padding(
-                        padding: const EdgeInsets.all(12.0),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+                        padding: const EdgeInsets.all(8.0),
+                        child: Row(
                           children: [
-                            Text('Nama Barang: ${_scannedItem!.name}',
-                                style: const TextStyle(
-                                    fontWeight: FontWeight.bold)),
-                            Text('Barcode: ${_scannedItem!.barcode}'),
-                            Text(
-                                'Stok Tersedia: ${_scannedItem!.quantityOrRemark.toString()}'),
+                            Expanded(
+                              child: ElevatedButton.icon(
+                                onPressed: () {
+                                  setState(() {
+                                    _isAdding = true;
+                                    _scannedItem = null;
+                                  });
+                                },
+                                icon: const Icon(Icons.add_circle_outline),
+                                label: const Text('Tambah'),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: _isAdding
+                                      ? Colors.green[600]
+                                      : Colors.grey[300],
+                                  foregroundColor:
+                                      _isAdding ? Colors.white : Colors.black87,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: ElevatedButton.icon(
+                                onPressed: () {
+                                  setState(() {
+                                    _isAdding = false;
+                                    _scannedItem = null;
+                                  });
+                                },
+                                icon: const Icon(Icons.remove_circle_outline),
+                                label: const Text('Ambil'),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: !_isAdding
+                                      ? Colors.red[600]
+                                      : Colors.grey[300],
+                                  foregroundColor: !_isAdding
+                                      ? Colors.white
+                                      : Colors.black87,
+                                ),
+                              ),
+                            ),
                           ],
                         ),
                       ),
                     ),
-                    const SizedBox(height: 15),
-                    if (_isQuantityBased)
-                      TextField(
-                        controller: _quantityController,
-                        decoration: InputDecoration(
-                          labelText: 'Kuantitas yang Diambil',
-                          border: const OutlineInputBorder(),
-                          hintText:
-                              'Stok tersedia: ${_scannedItem!.quantityOrRemark}',
-                        ),
-                        keyboardType: TextInputType.number,
-                        textInputAction: TextInputAction.done,
-                        onSubmitted: (value) {
-                          FocusScope.of(context).unfocus();
-                        },
-                      )
-                    else
-                      TextField(
-                        controller: _remarksController,
-                        decoration: const InputDecoration(
-                          labelText: 'Remarks Pengambilan',
-                          border: OutlineInputBorder(),
-                          hintText: 'Contoh: Untuk P3K di ruang rapat',
-                        ),
-                        maxLines: 3,
-                        textInputAction: TextInputAction.done,
-                        onSubmitted: (value) {
-                          FocusScope.of(context).unfocus();
-                        },
-                      ),
-                    const SizedBox(height: 20),
-                    Center(
-                      child: ElevatedButton(
-                        onPressed: _takeItem,
-                        child: const Text('Ambil Barang'),
+                  const SizedBox(height: 20),
+                  Card(
+                    elevation: 4,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.all(20.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          TextFormField(
+                            controller: _barcodeController,
+                            readOnly: true,
+                            decoration: InputDecoration(
+                              labelText: 'Barcode EAN-13',
+                              border: const OutlineInputBorder(),
+                              filled: true,
+                              fillColor: const Color(0xFFF3F4F6),
+                              suffixIcon: _isLoading
+                                  ? const Padding(
+                                      padding: EdgeInsets.all(8.0),
+                                      child: CircularProgressIndicator(
+                                          strokeWidth: 2),
+                                    )
+                                  : IconButton(
+                                      icon: const Icon(Icons.qr_code_scanner),
+                                      onPressed: _startScanBarcode,
+                                    ),
+                            ),
+                          ),
+                          if (_scannedItem != null) ...[
+                            const SizedBox(height: 20),
+                            Text(
+                              'Nama Barang: ${_scannedItem!.name}',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 18,
+                                color: Theme.of(context).primaryColor,
+                              ),
+                            ),
+                            const SizedBox(height: 10),
+                            Text(
+                                'Stok Tersedia: ${_scannedItem!.quantityOrRemark.toString()}',
+                                style: const TextStyle(fontSize: 16)),
+                            const SizedBox(height: 20),
+                            if (_isQuantityBased &&
+                                _scannedItem!.quantityOrRemark is int)
+                              TextFormField(
+                                controller: _quantityController,
+                                decoration: InputDecoration(
+                                  labelText: _isAdding
+                                      ? 'Kuantitas yang Ditambah'
+                                      : 'Kuantitas yang Diambil',
+                                  border: const OutlineInputBorder(),
+                                  filled: true,
+                                  fillColor: const Color(0xFFF3F4F6),
+                                  prefixIcon: Icon(_isAdding
+                                      ? Icons.add_box_outlined
+                                      : Icons.remove_circle_outline),
+                                  hintText: 'Masukkan kuantitas',
+                                ),
+                                keyboardType: TextInputType.number,
+                                onFieldSubmitted: (value) {
+                                  FocusScope.of(context).unfocus();
+                                },
+                              )
+                            else
+                              TextFormField(
+                                controller: _remarksController,
+                                decoration: const InputDecoration(
+                                  labelText: 'Remarks Pengambilan',
+                                  border: OutlineInputBorder(),
+                                  filled: true,
+                                  fillColor: Color(0xFFF3F4F6),
+                                  prefixIcon: Icon(Icons.notes),
+                                  hintText: 'Contoh: Untuk P3K di ruang rapat',
+                                ),
+                                maxLines: 3,
+                                onFieldSubmitted: (value) {
+                                  FocusScope.of(context).unfocus();
+                                },
+                              ),
+                            const SizedBox(height: 20),
+                            Center(
+                              child: ElevatedButton.icon(
+                                onPressed: _processItem,
+                                icon:
+                                    Icon(_isAdding ? Icons.add : Icons.remove),
+                                label: Text(_isAdding
+                                    ? 'Tambah Barang'
+                                    : 'Ambil Barang'),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor:
+                                      _isAdding ? Colors.green : Colors.red,
+                                  foregroundColor: Colors.white,
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 24, vertical: 12),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ] else if (!_isLoading)
+                            const Center(
+                              child: Text(
+                                'Pindai barcode untuk memproses barang.',
+                                textAlign: TextAlign.center,
+                              ),
+                            ),
+                        ],
                       ),
                     ),
-                  ] else if (_isLoading) ...[
-                    const Center(child: CircularProgressIndicator()),
-                    const SizedBox(height: 10),
-                    const Text('Mencari detail item...',
-                        textAlign: TextAlign.center),
-                  ] else ...[
-                    const Center(
-                        child: Text(
-                            'Pindai barcode atau masukkan secara manual untuk mengambil barang.')),
-                  ],
+                  ),
                 ],
               ),
       ),
