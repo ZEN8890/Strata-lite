@@ -644,8 +644,73 @@ class _ItemListScreenState extends State<ItemListScreen> {
                 ),
               ),
               const SizedBox(height: 15),
-              const Text('Daftar Barang Inventaris:',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+              // Tambahkan StreamBuilder untuk mendapatkan jumlah item
+              StreamBuilder<QuerySnapshot>(
+                stream: _firestore.collection('items').snapshots(),
+                builder: (context, snapshot) {
+                  if (!snapshot.hasData) {
+                    return const Text('Daftar Barang Inventaris:',
+                        style: TextStyle(
+                            fontWeight: FontWeight.bold, fontSize: 18));
+                  }
+                  List<Item> allItems = snapshot.data!.docs.map((doc) {
+                    return Item.fromFirestore(
+                        doc.data() as Map<String, dynamic>, doc.id);
+                  }).toList();
+
+                  List<Item> filteredItems = allItems.where((item) {
+                    final String lowerCaseQuery = _searchQuery.toLowerCase();
+                    bool matchesSearch =
+                        item.name.toLowerCase().contains(lowerCaseQuery) ||
+                            item.barcode.toLowerCase().contains(lowerCaseQuery);
+                    if (!matchesSearch) return false;
+
+                    if (_stockFilter == 'Stok Habis') {
+                      return item.quantityOrRemark is int &&
+                          item.quantityOrRemark == 0;
+                    }
+
+                    if (_expiryFilter == 'Semua Item') {
+                      return true;
+                    }
+
+                    if (item.expiryDate == null) {
+                      return false;
+                    }
+
+                    final now = DateTime.now();
+                    final difference = item.expiryDate!.difference(now);
+                    final differenceInMonths = difference.inDays / 30.44;
+
+                    if (_expiryFilter == '1 Tahun' &&
+                        differenceInMonths > 6 &&
+                        differenceInMonths <= 12) {
+                      return true;
+                    }
+                    if (_expiryFilter == '6 Bulan' &&
+                        differenceInMonths > 5 &&
+                        differenceInMonths <= 6) {
+                      return true;
+                    }
+                    if (_expiryFilter == '5 Bulan' &&
+                        differenceInMonths > 0 &&
+                        differenceInMonths <= 5) {
+                      return true;
+                    }
+                    if (_expiryFilter == 'Expired' &&
+                        item.expiryDate!.isBefore(now)) {
+                      return true;
+                    }
+                    return false;
+                  }).toList();
+
+                  return Text(
+                    'Daftar Barang Inventaris (${filteredItems.length}):',
+                    style: const TextStyle(
+                        fontWeight: FontWeight.bold, fontSize: 18),
+                  );
+                },
+              ),
               const SizedBox(height: 10),
               // Filter options for expiry date and stock
               SingleChildScrollView(
