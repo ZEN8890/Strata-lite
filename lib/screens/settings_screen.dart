@@ -20,7 +20,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   final TextEditingController _nameController = TextEditingController();
   final TextEditingController _emailController = TextEditingController();
-  final TextEditingController _phoneController = TextEditingController();
   final TextEditingController _newPasswordController = TextEditingController();
   final TextEditingController _currentPasswordController =
       TextEditingController();
@@ -57,7 +56,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
   void dispose() {
     _nameController.dispose();
     _emailController.dispose();
-    _phoneController.dispose();
     _newPasswordController.dispose();
     _currentPasswordController.dispose();
     super.dispose();
@@ -121,12 +119,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
       if (userDoc.exists) {
         Map<String, dynamic> userData = userDoc.data() as Map<String, dynamic>;
         _nameController.text = userData['name'] ?? '';
-        _phoneController.text = userData['phoneNumber'] ?? '';
         _selectedDepartment = userData['department'];
-        log('User data loaded: Name=${_nameController.text}, Email=${_emailController.text}, Department=$_selectedDepartment, Phone=${_phoneController.text}');
+        log('User data loaded: Name=${_nameController.text}, Email=${_emailController.text}, Department=$_selectedDepartment');
       } else {
         _nameController.text = 'Nama Tidak Ditemukan';
-        _phoneController.text = '';
         _selectedDepartment = null;
         log('Warning: User document not found in Firestore for UID: ${_currentUser!.uid}');
       }
@@ -167,7 +163,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
       await _firestore.collection('users').doc(_currentUser!.uid).set({
         'name': _nameController.text.trim(),
         'email': _emailController.text.trim(),
-        'phoneNumber': _phoneController.text.trim(),
         'department': _selectedDepartment,
       }, SetOptions(merge: true));
 
@@ -380,17 +375,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                 border: OutlineInputBorder(),
                                 prefixIcon: Icon(Icons.email),
                               ),
-                            ),
-                            const SizedBox(height: 15),
-                            TextField(
-                              controller: _phoneController,
-                              readOnly: false,
-                              decoration: const InputDecoration(
-                                labelText: 'Nomor Telepon',
-                                border: OutlineInputBorder(),
-                                prefixIcon: Icon(Icons.phone),
-                              ),
-                              keyboardType: TextInputType.phone,
                             ),
                             const SizedBox(height: 15),
                             // Departemen: Dibuat tidak bisa diubah dengan menonaktifkan onChanged

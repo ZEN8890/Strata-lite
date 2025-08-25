@@ -45,7 +45,7 @@ class _UsersScreenState extends State<UsersScreen> {
     'SALES & MARKETING',
     'Security',
   ];
-  final List<String> _roles = ['staff', 'admin'];
+  final List<String> _roles = ['staff'];
 
   static const String _fictitiousDomain = '@strata.com';
 
@@ -124,10 +124,6 @@ class _UsersScreenState extends State<UsersScreen> {
                 .toString()
                 .split('@')[0]
             : '');
-    TextEditingController phoneController = TextEditingController(
-        text: isEditing
-            ? (userToEdit!.data() as Map<String, dynamic>)['phoneNumber']
-            : '');
     TextEditingController newPasswordController = TextEditingController();
     TextEditingController adminPasswordController = TextEditingController();
 
@@ -203,18 +199,6 @@ class _UsersScreenState extends State<UsersScreen> {
                         }
                         return null;
                       },
-                    ),
-                    const SizedBox(height: 10),
-                    TextFormField(
-                      controller: phoneController,
-                      decoration: const InputDecoration(
-                        labelText: 'Nomor Telepon',
-                        border: OutlineInputBorder(),
-                        isDense: true,
-                        contentPadding:
-                            EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                      ),
-                      keyboardType: TextInputType.phone,
                     ),
                     const SizedBox(height: 10),
                     DropdownButtonFormField<String>(
@@ -340,7 +324,7 @@ class _UsersScreenState extends State<UsersScreen> {
                   Navigator.of(localDialogContext).pop();
 
                   try {
-                    // Otentikasi admin
+                    // Otentikasi ulang admin (sebenarnya tidak perlu karena sudah login)
                     await _auth.signInWithEmailAndPassword(
                         email: currentAdminEmail!,
                         password: currentAdminPassword);
@@ -352,11 +336,9 @@ class _UsersScreenState extends State<UsersScreen> {
                           .doc(userToEdit!.id)
                           .update({
                         'name': nameController.text.trim(),
-                        'phoneNumber': phoneController.text.trim(),
                         'department': selectedDepartment,
                         'role': selectedRole,
                       });
-
                       _showNotification('Berhasil!',
                           'Pengguna ${nameController.text} berhasil diperbarui.',
                           isError: false);
@@ -366,13 +348,19 @@ class _UsersScreenState extends State<UsersScreen> {
                           await _auth.createUserWithEmailAndPassword(
                               email: userEmail, password: newPassword);
 
+                      // --- Penambahan kode untuk mengatasi masalah sesi ---
+                      // Masuk kembali sebagai admin setelah membuat pengguna baru
+                      await _auth.signInWithEmailAndPassword(
+                          email: currentAdminEmail!,
+                          password: currentAdminPassword);
+                      // ---------------------------------------------------
+
                       await _firestore
                           .collection('users')
                           .doc(newUserCredential.user!.uid)
                           .set({
                         'name': nameController.text.trim(),
                         'email': userEmail,
-                        'phoneNumber': phoneController.text.trim(),
                         'department': selectedDepartment,
                         'role': selectedRole,
                         'createdAt': FieldValue.serverTimestamp(),
@@ -402,117 +390,6 @@ class _UsersScreenState extends State<UsersScreen> {
                   }
                 },
                 child: Text(isEditing ? 'Simpan Perubahan' : 'Tambah Pengguna'),
-              ),
-            ],
-          );
-        },
-      ),
-    );
-  }
-
-  Future<void> _sendPasswordResetEmail(String userEmail) async {
-    TextEditingController emailController =
-        TextEditingController(text: userEmail);
-    TextEditingController adminPasswordController = TextEditingController();
-    bool _obscureAdminPassword = true;
-
-    await showDialog(
-      context: context,
-      builder: (dialogContext) => StatefulBuilder(
-        builder: (context, setStateSB) {
-          return AlertDialog(
-            title: const Text('Kirim Tautan Reset Sandi'),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Text('Masukkan email tujuan tautan reset sandi:'),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: emailController,
-                  decoration: const InputDecoration(
-                    labelText: 'Email Tujuan',
-                    border: OutlineInputBorder(),
-                  ),
-                  keyboardType: TextInputType.emailAddress,
-                ),
-                const SizedBox(height: 10),
-                TextFormField(
-                  controller: adminPasswordController,
-                  decoration: InputDecoration(
-                    labelText: 'Sandi Admin Anda',
-                    border: const OutlineInputBorder(),
-                    suffixIcon: IconButton(
-                      icon: Icon(
-                        _obscureAdminPassword
-                            ? Icons.visibility
-                            : Icons.visibility_off,
-                      ),
-                      onPressed: () {
-                        setStateSB(() {
-                          _obscureAdminPassword = !_obscureAdminPassword;
-                        });
-                      },
-                    ),
-                  ),
-                  obscureText: _obscureAdminPassword,
-                  validator: (value) =>
-                      value!.isEmpty ? 'Sandi admin tidak boleh kosong.' : null,
-                ),
-              ],
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(dialogContext).pop(),
-                child: const Text('Batal'),
-              ),
-              ElevatedButton(
-                onPressed: () async {
-                  final adminPassword = adminPasswordController.text.trim();
-
-                  if (adminPassword.isEmpty) {
-                    _showNotification(
-                        'Gagal!', 'Sandi admin tidak boleh kosong.',
-                        isError: true);
-                    return;
-                  }
-
-                  try {
-                    log('DEBUG: Mencoba otentikasi ulang admin.');
-                    await _auth.signInWithEmailAndPassword(
-                        email: _auth.currentUser!.email!,
-                        password: adminPassword);
-                    log('DEBUG: Otentikasi admin berhasil. Mencoba mengirim email reset sandi.');
-
-                    await _auth.sendPasswordResetEmail(
-                        email: emailController.text.trim());
-                    log('DEBUG: Permintaan pengiriman email berhasil dikirim.');
-
-                    _showNotification('Berhasil!',
-                        'Tautan reset sandi telah dikirim ke ${emailController.text}.',
-                        isError: false);
-
-                    emailController.clear();
-                    Navigator.of(dialogContext).pop();
-                  } on FirebaseAuthException catch (e) {
-                    String message;
-                    if (e.code == 'wrong-password' ||
-                        e.code == 'invalid-credential') {
-                      message = 'Sandi admin salah.';
-                    } else if (e.code == 'user-not-found' ||
-                        e.code == 'invalid-email') {
-                      message = 'Email tidak valid atau tidak terdaftar.';
-                    } else {
-                      message = 'Gagal mengirim email reset: ${e.message}';
-                    }
-                    _showNotification('Gagal!', message, isError: true);
-                    log('DEBUG: Terjadi FirebaseAuthException: ${e.code} - ${e.message}');
-                  } catch (e) {
-                    _showNotification('Error', 'Terjadi kesalahan umum: $e',
-                        isError: true);
-                    log('DEBUG: Terjadi kesalahan umum saat mengirim email reset sandi: $e');
-                  }
-                },
-                child: const Text('Kirim Tautan'),
               ),
             ],
           );
@@ -787,6 +664,10 @@ class _UsersScreenState extends State<UsersScreen> {
               final newUserCredential =
                   await _auth.createUserWithEmailAndPassword(
                       email: email, password: password);
+
+              // Masuk kembali sebagai admin setelah membuat pengguna baru
+              await _auth.signInWithEmailAndPassword(
+                  email: currentAdminEmail, password: adminPassword);
 
               await _firestore
                   .collection('users')
@@ -1133,7 +1014,6 @@ class _UsersScreenState extends State<UsersScreen> {
 
                   final String name = userData['name'] ?? 'N/A';
                   final String email = userData['email'] ?? 'N/A';
-                  final String phoneNumber = userData['phoneNumber'] ?? 'N/A';
                   final String department = userData['department'] ?? 'N/A';
                   final String role = userData['role'] ?? 'N/A';
 
@@ -1163,8 +1043,6 @@ class _UsersScreenState extends State<UsersScreen> {
                           const SizedBox(height: 4),
                           Text('Email: $email',
                               style: const TextStyle(fontSize: 14)),
-                          Text('Telepon: $phoneNumber',
-                              style: const TextStyle(fontSize: 14)),
                           Text('Departemen: $department',
                               style: const TextStyle(fontSize: 14)),
                           Text('Role: ${role.toUpperCase()}',
@@ -1181,8 +1059,6 @@ class _UsersScreenState extends State<UsersScreen> {
                         onSelected: (String result) {
                           if (result == 'edit') {
                             _addEditUser(userToEdit: userDoc);
-                          } else if (result == 'reset_password') {
-                            _sendPasswordResetEmail(email);
                           } else if (result == 'delete') {
                             _deleteUser(userDoc.id, name);
                           }
@@ -1196,16 +1072,6 @@ class _UsersScreenState extends State<UsersScreen> {
                                 Icon(Icons.edit, color: Colors.blue),
                                 SizedBox(width: 8),
                                 Text('Edit Data'),
-                              ],
-                            ),
-                          ),
-                          const PopupMenuItem<String>(
-                            value: 'reset_password',
-                            child: Row(
-                              children: [
-                                Icon(Icons.lock_reset, color: Colors.orange),
-                                SizedBox(width: 8),
-                                Text('Reset Sandi'),
                               ],
                             ),
                           ),
