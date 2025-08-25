@@ -45,7 +45,7 @@ class _UsersScreenState extends State<UsersScreen> {
     'SALES & MARKETING',
     'Security',
   ];
-  final List<String> _roles = ['staff'];
+  final List<String> _roles = ['staff', 'admin'];
 
   static const String _fictitiousDomain = '@strata.com';
 
