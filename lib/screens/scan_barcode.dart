@@ -541,8 +541,8 @@ class _ScanBarcodeScreenState extends State<ScanBarcodeScreen> {
                                 icon:
                                     Icon(_isAdding ? Icons.add : Icons.remove),
                                 label: Text(_isAdding
-                                    ? 'Tambah Barang'
-                                    : 'Ambil Barang'),
+                                    ? 'Tambah barang'
+                                    : 'Ambil barang'),
                                 style: ElevatedButton.styleFrom(
                                   backgroundColor:
                                       _isAdding ? Colors.green : Colors.red,

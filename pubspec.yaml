@@ -36,6 +36,7 @@ dependencies:
   cloud_functions: ^4.0.0
   share_plus: ^7.0.0
   audioplayers: ^5.2.1
+  collection: ^1.19.1
 
 dev_dependencies:
   flutter_test:
