@@ -532,6 +532,18 @@ class _ItemListScreenState extends State<ItemListScreen> {
       appBar: AppBar(
         automaticallyImplyLeading: false,
         title: Text(_isGroupedView ? 'Daftar Grup Barang' : 'Daftar Barang'),
+        actions: [
+          IconButton(
+            icon: Icon(_isGroupedView ? Icons.view_list : Icons.folder_open),
+            onPressed: () {
+              setState(() {
+                _isGroupedView = !_isGroupedView;
+              });
+            },
+            tooltip:
+                _isGroupedView ? 'Lihat Semua Item' : 'Lihat Berdasarkan Grup',
+          ),
+        ],
       ),
       body: Column(
         children: [
@@ -632,108 +644,92 @@ class _ItemListScreenState extends State<ItemListScreen> {
                 SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
                   child: Row(
-                    mainAxisAlignment: MainAxisAlignment.start,
                     children: [
-                      // Filter chips
-                      FilterChip(
-                        label: const Text('Semua Item'),
-                        selected: _expiryFilter == 'Semua Item' &&
-                            _stockFilter == 'Semua Item',
-                        onSelected: (selected) {
-                          setState(() {
-                            _expiryFilter = 'Semua Item';
-                            _stockFilter = 'Semua Item';
-                          });
-                        },
-                      ),
-                      const SizedBox(width: 8),
-                      FilterChip(
-                        label: const Text('Stok Habis'),
-                        selected: _stockFilter == 'Stok Habis',
-                        onSelected: (selected) {
-                          setState(() {
-                            _stockFilter =
-                                selected ? 'Stok Habis' : 'Semua Item';
-                            if (selected) _expiryFilter = 'Semua Item';
-                          });
-                        },
-                      ),
-                      const SizedBox(width: 8),
-                      FilterChip(
-                        label: const Text('Expiring < 1 Tahun'),
-                        selected: _expiryFilter == '1 Tahun',
-                        onSelected: (selected) {
-                          setState(() {
-                            _expiryFilter = selected ? '1 Tahun' : 'Semua Item';
-                            if (selected) _stockFilter = 'Semua Item';
-                          });
-                        },
-                      ),
-                      const SizedBox(width: 8),
-                      FilterChip(
-                        label: const Text('Expiring < 6 Bulan'),
-                        selected: _expiryFilter == '6 Bulan',
-                        onSelected: (selected) {
-                          setState(() {
-                            _expiryFilter = selected ? '6 Bulan' : 'Semua Item';
-                            if (selected) _stockFilter = 'Semua Item';
-                          });
-                        },
-                      ),
-                      const SizedBox(width: 8),
-                      FilterChip(
-                        label: const Text('Expiring < 5 Bulan'),
-                        selected: _expiryFilter == '5 Bulan',
-                        onSelected: (selected) {
-                          setState(() {
-                            _expiryFilter = selected ? '5 Bulan' : 'Semua Item';
-                            if (selected) _stockFilter = 'Semua Item';
-                          });
-                        },
-                      ),
-                      const SizedBox(width: 8),
-                      FilterChip(
-                        label: const Text('Sudah Expired'),
-                        selected: _expiryFilter == 'Expired',
-                        onSelected: (selected) {
-                          setState(() {
-                            _expiryFilter = selected ? 'Expired' : 'Semua Item';
-                            if (selected) _stockFilter = 'Semua Item';
-                          });
-                        },
-                      ),
-                      // Menggunakan SizedBox untuk memberi jarak ke kanan
-                      SizedBox(width: 8),
-                      // Tombol beralih tampilan dan kelola grup di ujung kanan
-                      Row(
-                        children: [
-                          IconButton(
-                            icon: Icon(_isGroupedView
-                                ? Icons.view_list
-                                : Icons.folder_open),
-                            onPressed: () {
-                              setState(() {
-                                _isGroupedView = !_isGroupedView;
-                              });
-                            },
-                            tooltip: _isGroupedView
-                                ? 'Lihat Semua Item'
-                                : 'Lihat Berdasarkan Grup',
-                          ),
-                          if (_isGroupedView)
-                            IconButton(
-                              icon: const Icon(Icons.group_add),
-                              onPressed: () {
-                                showDialog(
-                                  context: context,
-                                  builder: (BuildContext context) =>
-                                      const GroupManagementDialog(),
-                                );
-                              },
-                              tooltip: 'Kelola Grup',
-                            ),
-                        ],
-                      ),
+                      if (!_isGroupedView) ...[
+                        FilterChip(
+                          label: const Text('Semua Item'),
+                          selected: _expiryFilter == 'Semua Item' &&
+                              _stockFilter == 'Semua Item',
+                          onSelected: (selected) {
+                            setState(() {
+                              _expiryFilter = 'Semua Item';
+                              _stockFilter = 'Semua Item';
+                            });
+                          },
+                        ),
+                        const SizedBox(width: 8),
+                        FilterChip(
+                          label: const Text('Stok Habis'),
+                          selected: _stockFilter == 'Stok Habis',
+                          onSelected: (selected) {
+                            setState(() {
+                              _stockFilter =
+                                  selected ? 'Stok Habis' : 'Semua Item';
+                              if (selected) _expiryFilter = 'Semua Item';
+                            });
+                          },
+                        ),
+                        const SizedBox(width: 8),
+                        FilterChip(
+                          label: const Text('Expiring < 1 Tahun'),
+                          selected: _expiryFilter == '1 Tahun',
+                          onSelected: (selected) {
+                            setState(() {
+                              _expiryFilter =
+                                  selected ? '1 Tahun' : 'Semua Item';
+                              if (selected) _stockFilter = 'Semua Item';
+                            });
+                          },
+                        ),
+                        const SizedBox(width: 8),
+                        FilterChip(
+                          label: const Text('Expiring < 6 Bulan'),
+                          selected: _expiryFilter == '6 Bulan',
+                          onSelected: (selected) {
+                            setState(() {
+                              _expiryFilter =
+                                  selected ? '6 Bulan' : 'Semua Item';
+                              if (selected) _stockFilter = 'Semua Item';
+                            });
+                          },
+                        ),
+                        const SizedBox(width: 8),
+                        FilterChip(
+                          label: const Text('Expiring < 5 Bulan'),
+                          selected: _expiryFilter == '5 Bulan',
+                          onSelected: (selected) {
+                            setState(() {
+                              _expiryFilter =
+                                  selected ? '5 Bulan' : 'Semua Item';
+                              if (selected) _stockFilter = 'Semua Item';
+                            });
+                          },
+                        ),
+                        const SizedBox(width: 8),
+                        FilterChip(
+                          label: const Text('Sudah Expired'),
+                          selected: _expiryFilter == 'Expired',
+                          onSelected: (selected) {
+                            setState(() {
+                              _expiryFilter =
+                                  selected ? 'Expired' : 'Semua Item';
+                              if (selected) _stockFilter = 'Semua Item';
+                            });
+                          },
+                        ),
+                      ],
+                      if (_isGroupedView)
+                        IconButton(
+                          icon: const Icon(Icons.group_add),
+                          onPressed: () {
+                            showDialog(
+                              context: context,
+                              builder: (BuildContext context) =>
+                                  const GroupManagementDialog(),
+                            );
+                          },
+                          tooltip: 'Kelola Grup',
+                        ),
                     ],
                   ),
                 ),
@@ -763,11 +759,11 @@ class _ItemListScreenState extends State<ItemListScreen> {
                       item.name.toLowerCase().contains(lowerCaseQuery) ||
                           item.barcode.toLowerCase().contains(lowerCaseQuery);
                   if (!matchesSearch) return false;
-                  if (_stockFilter == 'Stok Habis') {
+                  if (_stockFilter == 'Stok Habis' && !_isGroupedView) {
                     return item.quantityOrRemark is int &&
                         item.quantityOrRemark == 0;
                   }
-                  if (_expiryFilter == 'Semua Item') {
+                  if (_expiryFilter == 'Semua Item' && !_isGroupedView) {
                     return true;
                   }
                   if (item.expiryDate == null) {
@@ -777,21 +773,25 @@ class _ItemListScreenState extends State<ItemListScreen> {
                   final difference = item.expiryDate!.difference(now);
                   final differenceInMonths = difference.inDays / 30.44;
                   if (_expiryFilter == '1 Tahun' &&
+                      !_isGroupedView &&
                       differenceInMonths > 6 &&
                       differenceInMonths <= 12) {
                     return true;
                   }
                   if (_expiryFilter == '6 Bulan' &&
+                      !_isGroupedView &&
                       differenceInMonths > 5 &&
                       differenceInMonths <= 6) {
                     return true;
                   }
                   if (_expiryFilter == '5 Bulan' &&
+                      !_isGroupedView &&
                       differenceInMonths > 0 &&
                       differenceInMonths <= 5) {
                     return true;
                   }
                   if (_expiryFilter == 'Expired' &&
+                      !_isGroupedView &&
                       item.expiryDate!.isBefore(now)) {
                     return true;
                   }
