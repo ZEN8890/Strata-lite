@@ -16,9 +16,10 @@ class GroupManagementDialog extends StatefulWidget {
 class _GroupManagementDialogState extends State<GroupManagementDialog> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
-  void _showNotification(String title, String message, {bool isError = false}) {
+  Future<void> _showNotification(String title, String message,
+      {bool isError = false}) async {
     if (!mounted) return;
-    Flushbar(
+    await Flushbar(
       titleText: Text(title,
           style: TextStyle(
               fontWeight: FontWeight.bold,
@@ -119,6 +120,11 @@ class _GroupManagementDialogState extends State<GroupManagementDialog> {
   }
 
   Future<void> _manageItemsInGroup(Group group) async {
+    final itemsSnapshot = await _firestore.collection('items').get();
+    final allItems = itemsSnapshot.docs
+        .map((doc) => Item.fromFirestore(doc.data(), doc.id))
+        .toList();
+
     Set<String> selectedItemIds = Set<String>.from(group.itemIds);
     await showDialog(
       context: context,
@@ -127,44 +133,29 @@ class _GroupManagementDialogState extends State<GroupManagementDialog> {
           builder: (context, setState) {
             return AlertDialog(
               title: Text('Atur Item untuk "${group.name}"'),
-              content: StreamBuilder<QuerySnapshot>(
-                stream: _firestore.collection('items').snapshots(),
-                builder: (context, snapshot) {
-                  if (snapshot.connectionState == ConnectionState.waiting) {
-                    return const Center(child: CircularProgressIndicator());
-                  }
-                  final allItems = snapshot.data!.docs
-                      .map((doc) => Item.fromFirestore(
-                          doc.data() as Map<String, dynamic>, doc.id))
-                      .toList();
-                  if (allItems.isEmpty) {
-                    return const Text('Belum ada item.');
-                  }
-                  return SizedBox(
-                    width: double.maxFinite,
-                    child: ListView.builder(
-                      itemCount: allItems.length,
-                      itemBuilder: (context, index) {
-                        final item = allItems[index];
-                        final isSelected = selectedItemIds.contains(item.id);
-                        return CheckboxListTile(
-                          title: Text(item.name),
-                          subtitle: Text('Barcode: ${item.barcode}'),
-                          value: isSelected,
-                          onChanged: (bool? newValue) {
-                            setState(() {
-                              if (newValue == true) {
-                                selectedItemIds.add(item.id!);
-                              } else {
-                                selectedItemIds.remove(item.id);
-                              }
-                            });
-                          },
-                        );
+              content: SizedBox(
+                width: double.maxFinite,
+                child: ListView.builder(
+                  itemCount: allItems.length,
+                  itemBuilder: (context, index) {
+                    final item = allItems[index];
+                    final isSelected = selectedItemIds.contains(item.id);
+                    return CheckboxListTile(
+                      title: Text(item.name),
+                      subtitle: Text('Barcode: ${item.barcode}'),
+                      value: isSelected,
+                      onChanged: (bool? newValue) {
+                        setState(() {
+                          if (newValue == true) {
+                            selectedItemIds.add(item.id!);
+                          } else {
+                            selectedItemIds.remove(item.id);
+                          }
+                        });
                       },
-                    ),
-                  );
-                },
+                    );
+                  },
+                ),
               ),
               actions: [
                 TextButton(
@@ -181,7 +172,8 @@ class _GroupManagementDialogState extends State<GroupManagementDialog> {
                         'itemIds': selectedItemIds.toList(),
                       });
                       if (context.mounted) {
-                        _showNotification(
+                        // Tambahkan 'await' di sini
+                        await _showNotification(
                             'Berhasil', 'Item di grup berhasil diperbarui.');
                         Navigator.pop(context);
                       }

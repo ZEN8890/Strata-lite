@@ -530,6 +530,7 @@ class _ItemListScreenState extends State<ItemListScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
+        automaticallyImplyLeading: false,
         title: Text(_isGroupedView ? 'Daftar Grup Barang' : 'Daftar Barang'),
       ),
       body: Column(
@@ -631,40 +632,8 @@ class _ItemListScreenState extends State<ItemListScreen> {
                 SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
                   child: Row(
+                    mainAxisAlignment: MainAxisAlignment.start,
                     children: [
-                      // Tombol beralih tampilan dan kelola grup
-                      Container(
-                        margin: const EdgeInsets.only(right: 8),
-                        child: Row(
-                          children: [
-                            IconButton(
-                              icon: Icon(_isGroupedView
-                                  ? Icons.view_list
-                                  : Icons.folder_open),
-                              onPressed: () {
-                                setState(() {
-                                  _isGroupedView = !_isGroupedView;
-                                });
-                              },
-                              tooltip: _isGroupedView
-                                  ? 'Lihat Semua Item'
-                                  : 'Lihat Berdasarkan Grup',
-                            ),
-                            if (_isGroupedView)
-                              IconButton(
-                                icon: const Icon(Icons.group_add),
-                                onPressed: () {
-                                  showDialog(
-                                    context: context,
-                                    builder: (BuildContext context) =>
-                                        const GroupManagementDialog(),
-                                  );
-                                },
-                                tooltip: 'Kelola Grup',
-                              ),
-                          ],
-                        ),
-                      ),
                       // Filter chips
                       FilterChip(
                         label: const Text('Semua Item'),
@@ -732,6 +701,38 @@ class _ItemListScreenState extends State<ItemListScreen> {
                             if (selected) _stockFilter = 'Semua Item';
                           });
                         },
+                      ),
+                      // Menggunakan SizedBox untuk memberi jarak ke kanan
+                      SizedBox(width: 8),
+                      // Tombol beralih tampilan dan kelola grup di ujung kanan
+                      Row(
+                        children: [
+                          IconButton(
+                            icon: Icon(_isGroupedView
+                                ? Icons.view_list
+                                : Icons.folder_open),
+                            onPressed: () {
+                              setState(() {
+                                _isGroupedView = !_isGroupedView;
+                              });
+                            },
+                            tooltip: _isGroupedView
+                                ? 'Lihat Semua Item'
+                                : 'Lihat Berdasarkan Grup',
+                          ),
+                          if (_isGroupedView)
+                            IconButton(
+                              icon: const Icon(Icons.group_add),
+                              onPressed: () {
+                                showDialog(
+                                  context: context,
+                                  builder: (BuildContext context) =>
+                                      const GroupManagementDialog(),
+                                );
+                              },
+                              tooltip: 'Kelola Grup',
+                            ),
+                        ],
                       ),
                     ],
                   ),
