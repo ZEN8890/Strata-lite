@@ -11,7 +11,7 @@ project 'Runner', {
 }
 
 def flutter_install_all_pods
-  require_relative 'Flutter/podhelper'
+  require_relative File.join(File.dirname(__FILE__), 'Flutter', 'podhelper.rb')
 end
 
 target 'Runner' do
