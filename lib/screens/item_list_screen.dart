@@ -1,4 +1,3 @@
-// Path: lib/screens/item_list_screen.dart
 import 'package:flutter/material.dart';
 import 'package:excel/excel.dart';
 import 'package:file_picker/file_picker.dart';
@@ -6,8 +5,8 @@ import 'package:path_provider/path_provider.dart';
 import 'dart:io';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:Strata_lite/models/item.dart';
-import 'package:Strata_lite/models/group.dart';
+import 'package:strata_lite/models/item.dart';
+import 'package:strata_lite/models/group.dart';
 import 'dart:developer';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/foundation.dart';
@@ -16,7 +15,7 @@ import 'dart:async';
 import 'package:intl/intl.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:collection/collection.dart';
-import 'package:Strata_lite/screens/group_management_dialog.dart';
+import 'package:strata_lite/screens/group_management_dialog.dart';
 
 class ItemListScreen extends StatefulWidget {
   const ItemListScreen({super.key});
@@ -622,7 +621,7 @@ class _ItemListScreenState extends State<ItemListScreen> {
                                     width: 20,
                                     height: 20,
                                     child: CircularProgressIndicator(
-                                        color: Colors.white, strokeWidth: 2))
+                                        color: Colors.indigo, strokeWidth: 2))
                                 : const Icon(Icons.download_for_offline),
                             label: Text(_isLoadingImport
                                 ? 'Mengimpor...'
@@ -759,11 +758,17 @@ class _ItemListScreenState extends State<ItemListScreen> {
                       item.name.toLowerCase().contains(lowerCaseQuery) ||
                           item.barcode.toLowerCase().contains(lowerCaseQuery);
                   if (!matchesSearch) return false;
-                  if (_stockFilter == 'Stok Habis' && !_isGroupedView) {
+
+                  if (_isGroupedView) {
+                    // Ignore other filters in grouped view
+                    return true;
+                  }
+
+                  if (_stockFilter == 'Stok Habis') {
                     return item.quantityOrRemark is int &&
                         item.quantityOrRemark == 0;
                   }
-                  if (_expiryFilter == 'Semua Item' && !_isGroupedView) {
+                  if (_expiryFilter == 'Semua Item') {
                     return true;
                   }
                   if (item.expiryDate == null) {
@@ -773,38 +778,33 @@ class _ItemListScreenState extends State<ItemListScreen> {
                   final difference = item.expiryDate!.difference(now);
                   final differenceInMonths = difference.inDays / 30.44;
                   if (_expiryFilter == '1 Tahun' &&
-                      !_isGroupedView &&
                       differenceInMonths > 6 &&
                       differenceInMonths <= 12) {
                     return true;
                   }
                   if (_expiryFilter == '6 Bulan' &&
-                      !_isGroupedView &&
                       differenceInMonths > 5 &&
                       differenceInMonths <= 6) {
                     return true;
                   }
                   if (_expiryFilter == '5 Bulan' &&
-                      !_isGroupedView &&
                       differenceInMonths > 0 &&
                       differenceInMonths <= 5) {
                     return true;
                   }
                   if (_expiryFilter == 'Expired' &&
-                      !_isGroupedView &&
                       item.expiryDate!.isBefore(now)) {
                     return true;
                   }
                   return false;
                 }).toList();
 
-                if (filteredItems.isEmpty) {
-                  return const Center(child: Text('Barang tidak ditemukan.'));
-                }
-
                 if (_isGroupedView) {
                   return _buildGroupedList(filteredItems);
                 } else {
+                  if (filteredItems.isEmpty) {
+                    return const Center(child: Text('Barang tidak ditemukan.'));
+                  }
                   return _buildFlatList(filteredItems);
                 }
               },
@@ -901,6 +901,13 @@ class _ItemListScreenState extends State<ItemListScreen> {
         if (uncategorizedItems.isNotEmpty) {
           groupWidgets
               .add(_buildGroupExpansionTile('Tanpa Grup', uncategorizedItems));
+        }
+
+        if (groupWidgets.isEmpty) {
+          return const Center(
+            child: Text('Tidak ada grup atau barang yang dikategorikan.',
+                textAlign: TextAlign.center),
+          );
         }
 
         return ListView(children: groupWidgets);

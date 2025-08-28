@@ -1,4 +1,4 @@
-package com.example.projek_strata_mini
+package com.example.strata_lite
 
 import io.flutter.embedding.android.FlutterActivity
 

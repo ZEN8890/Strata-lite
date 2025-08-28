@@ -3,7 +3,7 @@ import 'package:mobile_scanner/mobile_scanner.dart';
 import 'dart:async';
 import 'dart:developer';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:Strata_lite/models/item.dart';
+import 'package:strata_lite/models/item.dart';
 import 'package:another_flushbar/flushbar.dart';
 import 'package:intl/intl.dart';
 import 'package:audioplayers/audioplayers.dart';

@@ -2,8 +2,8 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:another_flushbar/flushbar.dart';
-import 'package:Strata_lite/models/group.dart';
-import 'package:Strata_lite/models/item.dart';
+import 'package:strata_lite/models/group.dart';
+import 'package:strata_lite/models/item.dart';
 import 'dart:developer';
 
 class GroupManagementDialog extends StatefulWidget {

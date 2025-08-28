@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:Strata_lite/screens/admin_dashboard_screen.dart';
-import 'package:Strata_lite/screens/staff_dashboard_screen.dart'; // <--- Import StaffDashboardScreen
-import 'package:Strata_lite/screens/login_screen.dart';
+import 'package:strata_lite/screens/admin_dashboard_screen.dart';
+import 'package:strata_lite/screens/staff_dashboard_screen.dart'; // <--- Import StaffDashboardScreen
+import 'package:strata_lite/screens/login_screen.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'package:Strata_lite/firebase_options.dart';
+import 'package:strata_lite/firebase_options.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart'; // <--- Import Cloud Firestore
 

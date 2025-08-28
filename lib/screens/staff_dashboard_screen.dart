@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:Strata_lite/screens/scan_barcode.dart'; // Import halaman Ambil Barang
-import 'package:Strata_lite/screens/settings_screen.dart'; // Import halaman Pengaturan
+import 'package:strata_lite/screens/scan_barcode.dart'; // Import halaman Ambil Barang
+import 'package:strata_lite/screens/settings_screen.dart'; // Import halaman Pengaturan
 import 'dart:developer'; // Untuk log.log()
 
 class StaffDashboardScreen extends StatefulWidget {
