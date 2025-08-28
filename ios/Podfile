@@ -4,16 +4,30 @@ platform :ios, '13.0'
 # CocoaPods analytics sends network stats synchronously affecting flutter build latency.
 ENV['COCOAPODS_DISABLE_STATS'] = 'true'
 
+# For Flutter plugins, use 'pod 'nama_plugin', :path => '../../../../.pub-cache/hosted/pub.dev/nama_plugin-versi/ios'
+# Or simply add the plugin in pubspec.yaml and run `flutter pub get`
+# to let the Flutter tool manage the pods automatically.
+
 project 'Runner', {
   'Debug' => :debug,
   'Profile' => :release,
   'Release' => :release,
 }
 
+# The flutter_install_all_pods function is a crucial part of Flutter's iOS build process.
+# It automatically finds and includes all the necessary pods from your Flutter plugins.
 def flutter_install_all_pods
   require_relative File.join(File.dirname(__FILE__), 'Flutter', 'podhelper.rb')
 end
 
 target 'Runner' do
+  # This line is where all your Flutter plugin pods are automatically installed.
   flutter_install_all_pods
+
+  # Uncomment the following line if you want to use Swift Package Manager instead of CocoaPods.
+  # use_frameworks!
+
+  # Here you can manually add any custom pods for your iOS app.
+  # For example:
+  # pod 'AFNetworking', '~> 4.0'
 end
