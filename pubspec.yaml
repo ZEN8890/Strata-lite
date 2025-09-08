@@ -37,7 +37,9 @@ dependencies:
   share_plus: ^7.0.0
   audioplayers: ^6.5.0
   collection: ^1.19.1
-
+  qr_flutter: ^4.1.0
+  gallery_saver: ^2.0.3
+  
 dev_dependencies:
   flutter_test:
     sdk: flutter

@@ -1,3 +1,4 @@
+// Path: lib/screens/scan_barcode.dart
 import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'dart:async';
@@ -6,6 +7,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:strata_lite/models/item.dart';
 import 'package:strata_lite/models/log_entry.dart';
+import 'package:strata_lite/models/group.dart';
 import 'package:another_flushbar/flushbar.dart';
 import 'package:audioplayers/audioplayers.dart';
 
@@ -27,11 +29,13 @@ class _ScanBarcodeScreenState extends State<ScanBarcodeScreen> {
   Timer? _alertTimer;
 
   Timer? _notificationTimer;
+  Rect?
+      _detectedBarcodeRect; // Tambahkan variabel untuk menyimpan ukuran barcode
 
   Item? _scannedItem;
   bool _isQuantityBased = true;
   String _userRole = 'staff';
-  bool _isAdding = true;
+  bool _isAdding = false;
 
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
@@ -59,7 +63,9 @@ class _ScanBarcodeScreenState extends State<ScanBarcodeScreen> {
           setState(() {
             _userRole = userData['role'] ?? 'staff';
             if (_userRole == 'staff') {
-              _isAdding = false; // Set to 'take' for staff
+              _isAdding = false;
+            } else {
+              _isAdding = true;
             }
           });
           log('User role fetched: $_userRole');
@@ -139,6 +145,7 @@ class _ScanBarcodeScreenState extends State<ScanBarcodeScreen> {
       _barcodeController.clear();
       _quantityController.clear();
       _remarksController.clear();
+      _detectedBarcodeRect = null; // Reset bounding box
     });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _scannerController?.start();
@@ -156,22 +163,25 @@ class _ScanBarcodeScreenState extends State<ScanBarcodeScreen> {
 
       log('Scanned barcode result: $barcodeValue (Format: ${detectedBarcode.format})');
 
-      if (barcodeValue != null && barcodeValue.length == 13) {
+      _scannerController?.stop();
+      setState(() {
+        _isScanning = false;
+        // Gunakan boundingBox dari BarcodeCapture
+        _detectedBarcodeRect = capture.barcodes.first.boundingBox;
+      });
+
+      if (barcodeValue != null && barcodeValue.startsWith('group:')) {
+        String groupId = barcodeValue.substring(6);
+        _showNotification('QR Code Grup Ditemukan', 'Memuat item grup...');
+        _showGroupItemsSelection(groupId);
+      } else if (barcodeValue != null && barcodeValue.length == 13) {
         _barcodeController.text = barcodeValue;
-        _showNotification(
-            'Barcode Ditemukan', 'Barcode EAN-13 terdeteksi: $barcodeValue');
-
+        _showNotification('Barcode Ditemukan', 'Barcode EAN-13 terdeteksi.');
         _playScanSound();
-
-        setState(() {
-          _isScanning = false;
-        });
-        _scannerController?.stop();
-
         _fetchItemDetails(barcodeValue);
       } else {
-        _showNotification(
-            'Barcode Invalid', 'Barcode tidak valid atau bukan EAN-13.',
+        _showNotification('Barcode Invalid',
+            'Barcode tidak valid atau bukan EAN-13 / QR Code grup.',
             isError: true);
       }
     }
@@ -219,6 +229,264 @@ class _ScanBarcodeScreenState extends State<ScanBarcodeScreen> {
           isError: true);
       log('Error fetching item details: $e');
     }
+  }
+
+  // Method baru untuk menampilkan list item dari grup
+  Future<void> _showGroupItemsSelection(String groupId) async {
+    try {
+      DocumentSnapshot groupDoc =
+          await _firestore.collection('groups').doc(groupId).get();
+      if (!groupDoc.exists) {
+        _showNotification(
+            'Grup Tidak Ditemukan', 'Grup dengan QR Code ini tidak ada.',
+            isError: true);
+        return;
+      }
+      final group = Group.fromFirestore(groupDoc);
+      if (group.itemIds.isEmpty) {
+        _showNotification('Grup Kosong', 'Grup ini tidak memiliki item.',
+            isError: true);
+        return;
+      }
+
+      final itemsSnapshot = await _firestore
+          .collection('items')
+          .where(FieldPath.documentId, whereIn: group.itemIds)
+          .get();
+      final allGroupItems = itemsSnapshot.docs
+          .map((doc) =>
+              Item.fromFirestore(doc.data() as Map<String, dynamic>, doc.id))
+          .toList();
+
+      // State untuk dialog: menyimpan status centang dan controller input
+      Map<String, bool> selectedItems = {};
+      Map<String, TextEditingController> quantityControllers = {};
+      Map<String, TextEditingController> remarksControllers = {};
+
+      for (var item in allGroupItems) {
+        selectedItems[item.id!] = false;
+        if (item.quantityOrRemark is int) {
+          quantityControllers[item.id!] = TextEditingController();
+        } else {
+          remarksControllers[item.id!] = TextEditingController();
+        }
+      }
+
+      showDialog(
+        context: context,
+        builder: (dialogContext) {
+          return StatefulBuilder(
+            builder: (context, setState) {
+              return AlertDialog(
+                title: Text('Pilih Item dari Grup "${group.name}"'),
+                content: SizedBox(
+                  width: double.maxFinite,
+                  child: ListView.builder(
+                    itemCount: allGroupItems.length,
+                    itemBuilder: (context, index) {
+                      final item = allGroupItems[index];
+                      final isSelected = selectedItems[item.id] ?? false;
+
+                      return Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          CheckboxListTile(
+                            title: Text(item.name),
+                            subtitle: Text(
+                                'Stok: ${item.quantityOrRemark.toString()}'),
+                            value: isSelected,
+                            onChanged: (bool? newValue) {
+                              setState(() {
+                                selectedItems[item.id!] = newValue!;
+                              });
+                            },
+                          ),
+                          if (isSelected)
+                            Padding(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 16.0, vertical: 8.0),
+                              child: item.quantityOrRemark is int
+                                  ? TextField(
+                                      controller: quantityControllers[item.id],
+                                      decoration: InputDecoration(
+                                        labelText: _isAdding
+                                            ? 'Kuantitas Ditambah'
+                                            : 'Kuantitas Diambil',
+                                        border: const OutlineInputBorder(),
+                                      ),
+                                      keyboardType: TextInputType.number,
+                                    )
+                                  : TextField(
+                                      controller: remarksControllers[item.id],
+                                      decoration: const InputDecoration(
+                                        labelText: 'Remarks Pengambilan',
+                                        border: OutlineInputBorder(),
+                                      ),
+                                      maxLines: 3,
+                                    ),
+                            ),
+                        ],
+                      );
+                    },
+                  ),
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(dialogContext),
+                    child: const Text('Batal'),
+                  ),
+                  ElevatedButton(
+                    onPressed: () {
+                      _confirmAndProcessGroupItems(
+                          selectedItems,
+                          quantityControllers,
+                          remarksControllers,
+                          allGroupItems);
+                      Navigator.pop(dialogContext);
+                    },
+                    child: const Text('Konfirmasi'),
+                  ),
+                ],
+              );
+            },
+          );
+        },
+      );
+    } catch (e) {
+      log('Error fetching group items: $e');
+      _showNotification(
+          'Gagal Memuat Grup', 'Terjadi kesalahan saat memuat item grup.',
+          isError: true);
+    }
+  }
+
+  // Method baru untuk konfirmasi dan memproses item grup yang dipilih
+  Future<void> _confirmAndProcessGroupItems(
+      Map<String, bool> selectedItems,
+      Map<String, TextEditingController> quantityControllers,
+      Map<String, TextEditingController> remarksControllers,
+      List<Item> allGroupItems) async {
+    List<Map<String, dynamic>> itemsToProcess = [];
+
+    for (var item in allGroupItems) {
+      if (selectedItems[item.id] == true) {
+        if (item.quantityOrRemark is int) {
+          int? qty = int.tryParse(quantityControllers[item.id]!.text.trim());
+          if (qty != null && qty > 0) {
+            itemsToProcess.add({
+              'item': item,
+              'quantity': qty,
+              'isAdding': _isAdding,
+            });
+          }
+        } else {
+          String? remark = remarksControllers[item.id]!.text.trim();
+          if (remark.isNotEmpty) {
+            itemsToProcess.add({
+              'item': item,
+              'remark': remark,
+            });
+          }
+        }
+      }
+    }
+
+    if (itemsToProcess.isEmpty) {
+      _showNotification(
+          'Tidak Ada Item Dipilih', 'Silakan pilih item untuk diproses.',
+          isError: true);
+      return;
+    }
+
+    bool? confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Konfirmasi Pilihan'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Apakah Anda yakin ingin memproses item berikut?'),
+            const SizedBox(height: 10),
+            ...itemsToProcess.map((data) {
+              Item item = data['item'];
+              if (item.quantityOrRemark is int) {
+                int qty = data['quantity'];
+                return Text(
+                    '- ${item.name}: ${_isAdding ? 'Tambah' : 'Ambil'} $qty');
+              } else {
+                return Text('- ${item.name}: Remarks "${data['remark']}"');
+              }
+            }).toList(),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Batal'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Proses'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      _processSelectedGroupItems(itemsToProcess);
+    }
+  }
+
+  // Method untuk memproses semua item yang dipilih dari grup
+  Future<void> _processSelectedGroupItems(
+      List<Map<String, dynamic>> itemsToProcess) async {
+    setState(() {
+      _isLoading = true;
+    });
+
+    for (var data in itemsToProcess) {
+      Item item = data['item'];
+      try {
+        if (item.quantityOrRemark is int) {
+          int quantity = data['quantity'];
+          int newQuantity = _isAdding ? quantity : -quantity;
+
+          if (!_isAdding && quantity > item.quantityOrRemark) {
+            _showNotification('Gagal', 'Stok ${item.name} tidak cukup.',
+                isError: true);
+            continue;
+          }
+
+          await _firestore.collection('items').doc(item.id).update({
+            'quantityOrRemark': FieldValue.increment(newQuantity),
+          });
+
+          DocumentSnapshot updatedItemDoc =
+              await _firestore.collection('items').doc(item.id).get();
+          int? updatedStock = (updatedItemDoc.data()
+              as Map<String, dynamic>)['quantityOrRemark'];
+
+          String operation = _isAdding ? 'Ditambahkan' : 'Dikurangi';
+          _showNotification('Sukses',
+              'Stok ${item.name} $operation sebanyak $quantity. Sisa: $updatedStock');
+
+          await _addLogEntry(item, newQuantity, remainingStock: updatedStock);
+        } else {
+          String remarks = data['remark'];
+          await _addLogEntry(item, remarks, remarks: remarks);
+          _showNotification('Sukses', 'Pengambilan ${item.name} dicatat.');
+        }
+      } catch (e) {
+        log('Error processing item ${item.name}: $e');
+        _showNotification('Error', 'Gagal memproses item ${item.name}.',
+            isError: true);
+      }
+    }
+
+    setState(() {
+      _isLoading = false;
+    });
   }
 
   Future<void> _processItem() async {
@@ -365,20 +633,18 @@ class _ScanBarcodeScreenState extends State<ScanBarcodeScreen> {
                   MobileScanner(
                     controller: _scannerController,
                     onDetect: _onBarcodeDetected,
-                    scanWindow: scanWindowRect,
+                    // Hilangkan scanWindow untuk batas merah dinamis
                   ),
-                  Positioned(
-                    left: scanWindowRect.left,
-                    top: scanWindowRect.top,
-                    width: scanWindowRect.width,
-                    height: scanWindowRect.height,
-                    child: Container(
-                      decoration: BoxDecoration(
-                        border: Border.all(color: Colors.red, width: 4),
-                        borderRadius: BorderRadius.circular(12),
+                  if (_detectedBarcodeRect != null)
+                    Positioned.fromRect(
+                      rect: _detectedBarcodeRect!,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          border: Border.all(color: Colors.red, width: 4),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
                       ),
                     ),
-                  ),
                   Positioned(
                     bottom: 16,
                     left: 16,
@@ -466,7 +732,7 @@ class _ScanBarcodeScreenState extends State<ScanBarcodeScreen> {
                             controller: _barcodeController,
                             readOnly: true,
                             decoration: InputDecoration(
-                              labelText: 'Barcode EAN-13',
+                              labelText: 'Barcode atau QR Code',
                               border: const OutlineInputBorder(),
                               filled: true,
                               fillColor: const Color(0xFFF3F4F6),
@@ -558,7 +824,7 @@ class _ScanBarcodeScreenState extends State<ScanBarcodeScreen> {
                           ] else if (!_isLoading)
                             const Center(
                               child: Text(
-                                'Pindai barcode untuk memproses barang.',
+                                'Pindai barcode atau QR code untuk memproses barang.',
                                 textAlign: TextAlign.center,
                               ),
                             ),
@@ -571,4 +837,8 @@ class _ScanBarcodeScreenState extends State<ScanBarcodeScreen> {
       ),
     );
   }
+}
+
+extension on Barcode {
+  Rect? get boundingBox => null;
 }

@@ -1,3 +1,5 @@
+// Path: C:\vscode_projek\projek\project_strata_lite\android\app\build.gradle.kts
+
 plugins {
     id("com.android.application")
     // START: FlutterFire Configuration
@@ -16,12 +18,12 @@ android {
     ndkVersion = "27.0.12077973" // Paksa menggunakan versi NDK yang lebih tinggi
 
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_11
-        targetCompatibility = JavaVersion.VERSION_11
+        sourceCompatibility = JavaVersion.VERSION_17 // Diperbarui ke Java 17
+        targetCompatibility = JavaVersion.VERSION_17 // Diperbarui ke Java 17
     }
 
     kotlinOptions {
-        jvmTarget = JavaVersion.VERSION_11.toString()
+        jvmTarget = "1.8" // Diperbarui ke 1.8 agar kompatibel dengan plugin pihak ketiga
     }
 
     defaultConfig {

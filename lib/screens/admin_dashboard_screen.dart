@@ -1,17 +1,18 @@
+// Path: lib/screens/admin_dashboard_screen.dart
 import 'package:flutter/material.dart';
 import 'package:strata_lite/screens/add_item_screen.dart';
 import 'package:strata_lite/screens/item_list_screen.dart';
 import 'package:strata_lite/screens/time_log_screen.dart';
 import 'package:strata_lite/screens/scan_barcode.dart';
 import 'package:strata_lite/screens/settings_screen.dart';
-import 'package:strata_lite/screens/users_screen.dart'; // <--- Import UsersScreen
+import 'package:strata_lite/screens/users_screen.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'dart:developer';
-import 'dart:async'; // <--- Tambahkan import ini untuk StreamSubscription
-
-// Import the LoginScreen to navigate to it correctly
+import 'dart:async';
 import 'package:strata_lite/screens/login_screen.dart';
+// Impor file baru
+import 'package:strata_lite/screens/group_management_dialog.dart';
 
 class AdminDashboardScreen extends StatefulWidget {
   const AdminDashboardScreen({super.key});
@@ -31,9 +32,9 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
-  // Deklarasikan StreamSubscription untuk mendengarkan perubahan data pengguna
   StreamSubscription<DocumentSnapshot>? _userSubscription;
 
+  // Daftar halaman untuk dashboard admin
   final List<Widget> _pages = [
     const ItemListScreen(),
     const AddItemScreen(),
@@ -41,17 +42,15 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     const TimeLogScreen(),
     const SettingsScreen(),
     const ScanBarcodeScreen(),
-    const UsersScreen(), // <--- Tambahkan UsersScreen di sini (indeks 6)
+    const UsersScreen(),
   ];
 
   @override
   void initState() {
     super.initState();
-    // Ganti _loadDrawerUserData() dengan _subscribeToUserData()
     _subscribeToUserData();
   }
 
-  // Penting: Batalkan subscription saat widget dihapus untuk mencegah memory leak
   @override
   void dispose() {
     _userSubscription?.cancel();
@@ -73,13 +72,12 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       return;
     }
 
-    // Batalkan subscription yang lama jika ada
     _userSubscription?.cancel();
 
     _userSubscription = _firestore
         .collection('users')
         .doc(currentUser.uid)
-        .snapshots() // Menggunakan snapshots() untuk mendapatkan stream
+        .snapshots()
         .listen((userDoc) {
       if (!mounted) return;
       setState(() {
@@ -137,18 +135,13 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     );
 
     if (confirm == true) {
-      // Perform Firebase logout
       await FirebaseAuth.instance.signOut();
       if (!context.mounted) return;
 
-      // Navigate to LoginScreen and remove all previous routes from the stack
       Navigator.of(context).pushAndRemoveUntil(
         MaterialPageRoute(builder: (context) => const LoginScreen()),
-        (Route<dynamic> route) =>
-            false, // This predicate ensures all routes are removed
+        (Route<dynamic> route) => false,
       );
-      // Optional: show a notification if desired
-      // _showNotification('Logout Berhasil', 'Anda telah berhasil keluar.', isError: false);
     }
   }
 
@@ -157,18 +150,6 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Dashboard Admin Strata Lite'),
-        // --- START CHANGES HERE ---
-        // Hapus atau komentari bagian 'actions' berikut ini
-        /*
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.logout),
-            tooltip: 'Logout',
-            onPressed: _confirmLogout,
-          ),
-        ],
-        */
-        // --- END CHANGES HERE ---
       ),
       drawer: Drawer(
         child: ListView(
@@ -251,11 +232,10 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
             ),
             const Divider(),
             ListTile(
-              leading: const Icon(Icons.group), // <--- Icon untuk halaman Users
-              title: const Text(
-                  'Manajemen Pengguna'), // <--- Nama menu untuk Users
+              leading: const Icon(Icons.group),
+              title: const Text('Manajemen Pengguna'),
               onTap: () {
-                _onItemTapped(6); // <--- Indeks 6 untuk UsersScreen
+                _onItemTapped(6);
                 Navigator.pop(context);
               },
             ),

@@ -2,14 +2,15 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 class Group {
-  final String? id;
+  String? id;
   final String name;
   final List<dynamic> itemIds; // List of item document IDs
 
   Group({
     this.id,
     required this.name,
-    required this.itemIds,
+    this.itemIds =
+        const [], // itemIds sekarang bersifat opsional dengan nilai default
   });
 
   factory Group.fromFirestore(DocumentSnapshot doc) {
