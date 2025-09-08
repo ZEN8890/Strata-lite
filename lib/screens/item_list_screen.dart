@@ -369,7 +369,7 @@ class _ItemListScreenState extends State<ItemListScreen> {
           dynamic quantityOrRemark;
           if (int.tryParse(quantityOrRemarkString) != null) {
             quantityOrRemark = int.parse(quantityOrRemarkString);
-            if (quantityOrRemark <= 0) {
+            if (quantityOrRemark < 0) {
               log('Skipping row $i: Kuantitas harus angka positif.');
               skippedCount++;
               continue;
