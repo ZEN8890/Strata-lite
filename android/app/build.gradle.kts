@@ -23,7 +23,7 @@ android {
     }
 
     kotlinOptions {
-        jvmTarget = "1.8" // Diperbarui ke 1.8 agar kompatibel dengan plugin pihak ketiga
+        jvmTarget = "17" // Diperbarui ke 1.8 agar kompatibel dengan plugin pihak ketiga
     }
 
     defaultConfig {

@@ -29,8 +29,7 @@ class _ScanBarcodeScreenState extends State<ScanBarcodeScreen> {
   Timer? _alertTimer;
 
   Timer? _notificationTimer;
-  Rect?
-      _detectedBarcodeRect; // Tambahkan variabel untuk menyimpan ukuran barcode
+  Rect? _detectedBarcodeRect;
 
   Item? _scannedItem;
   bool _isQuantityBased = true;
@@ -145,7 +144,7 @@ class _ScanBarcodeScreenState extends State<ScanBarcodeScreen> {
       _barcodeController.clear();
       _quantityController.clear();
       _remarksController.clear();
-      _detectedBarcodeRect = null; // Reset bounding box
+      _detectedBarcodeRect = null;
     });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _scannerController?.start();
@@ -166,8 +165,8 @@ class _ScanBarcodeScreenState extends State<ScanBarcodeScreen> {
       _scannerController?.stop();
       setState(() {
         _isScanning = false;
-        // Gunakan boundingBox dari BarcodeCapture
-        _detectedBarcodeRect = capture.barcodes.first.boundingBox;
+        _detectedBarcodeRect =
+            null; // Adjust this based on your actual requirement
       });
 
       if (barcodeValue != null && barcodeValue.startsWith('group:')) {
@@ -231,7 +230,6 @@ class _ScanBarcodeScreenState extends State<ScanBarcodeScreen> {
     }
   }
 
-  // Method baru untuk menampilkan list item dari grup
   Future<void> _showGroupItemsSelection(String groupId) async {
     try {
       DocumentSnapshot groupDoc =
@@ -258,7 +256,6 @@ class _ScanBarcodeScreenState extends State<ScanBarcodeScreen> {
               Item.fromFirestore(doc.data() as Map<String, dynamic>, doc.id))
           .toList();
 
-      // State untuk dialog: menyimpan status centang dan controller input
       Map<String, bool> selectedItems = {};
       Map<String, TextEditingController> quantityControllers = {};
       Map<String, TextEditingController> remarksControllers = {};
@@ -360,7 +357,6 @@ class _ScanBarcodeScreenState extends State<ScanBarcodeScreen> {
     }
   }
 
-  // Method baru untuk konfirmasi dan memproses item grup yang dipilih
   Future<void> _confirmAndProcessGroupItems(
       Map<String, bool> selectedItems,
       Map<String, TextEditingController> quantityControllers,
@@ -438,7 +434,6 @@ class _ScanBarcodeScreenState extends State<ScanBarcodeScreen> {
     }
   }
 
-  // Method untuk memproses semua item yang dipilih dari grup
   Future<void> _processSelectedGroupItems(
       List<Map<String, dynamic>> itemsToProcess) async {
     setState(() {
@@ -612,15 +607,6 @@ class _ScanBarcodeScreenState extends State<ScanBarcodeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final Size screenSize = MediaQuery.of(context).size;
-    final double scanWidth = screenSize.width * 0.7;
-    final double scanHeight = screenSize.height * 0.15;
-    final double scanLeft = (screenSize.width - scanWidth) / 2;
-    final double scanTop =
-        (screenSize.height / 2) - (scanHeight / 2) - (screenSize.height * 0.15);
-    final Rect scanWindowRect = Rect.fromLTRB(
-        scanLeft, scanTop, scanLeft + scanWidth, scanTop + scanHeight);
-
     return Padding(
       padding: const EdgeInsets.all(16.0),
       child: GestureDetector(
@@ -633,7 +619,6 @@ class _ScanBarcodeScreenState extends State<ScanBarcodeScreen> {
                   MobileScanner(
                     controller: _scannerController,
                     onDetect: _onBarcodeDetected,
-                    // Hilangkan scanWindow untuk batas merah dinamis
                   ),
                   if (_detectedBarcodeRect != null)
                     Positioned.fromRect(
@@ -641,7 +626,7 @@ class _ScanBarcodeScreenState extends State<ScanBarcodeScreen> {
                       child: Container(
                         decoration: BoxDecoration(
                           border: Border.all(color: Colors.red, width: 4),
-                          borderRadius: BorderRadius.circular(12),
+                          borderRadius: BorderRadius.zero,
                         ),
                       ),
                     ),
@@ -837,8 +822,4 @@ class _ScanBarcodeScreenState extends State<ScanBarcodeScreen> {
       ),
     );
   }
-}
-
-extension on Barcode {
-  Rect? get boundingBox => null;
 }

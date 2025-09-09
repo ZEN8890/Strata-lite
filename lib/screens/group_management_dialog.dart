@@ -1,5 +1,7 @@
 // Path: lib/screens/group_management_dialog.dart
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show defaultTargetPlatform;
+import 'package:file_picker/file_picker.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:another_flushbar/flushbar.dart';
 import 'package:strata_lite/models/group.dart';
@@ -215,25 +217,54 @@ class _GroupManagementDialogState extends State<GroupManagementDialog> {
     try {
       RenderRepaintBoundary boundary =
           _qrKey.currentContext!.findRenderObject() as RenderRepaintBoundary;
-      ui.Image image = await boundary.toImage();
+      ui.Image image = await boundary.toImage(pixelRatio: 3.0);
       ByteData? byteData =
           await image.toByteData(format: ui.ImageByteFormat.png);
       Uint8List pngBytes = byteData!.buffer.asUint8List();
 
-      final tempDir = await getTemporaryDirectory();
-      final file = await File('${tempDir.path}/qr_code.png').create();
-      await file.writeAsBytes(pngBytes);
+      final String fileName =
+          'qr_code_${DateTime.now().millisecondsSinceEpoch}.png';
 
-      final success =
-          await GallerySaver.saveImage(file.path, albumName: 'Strata Lite');
+      if (defaultTargetPlatform == TargetPlatform.windows ||
+          defaultTargetPlatform == TargetPlatform.macOS ||
+          defaultTargetPlatform == TargetPlatform.linux) {
+        // Logic for desktop platforms using file_picker
+        final String? resultPath = await FilePicker.platform.saveFile(
+          fileName: fileName,
+          type: FileType.custom,
+          allowedExtensions: ['png'],
+        );
 
-      if (success == true) {
-        _showNotification('Berhasil', 'QR Code berhasil disimpan ke galeri.');
+        if (!mounted) return;
+
+        if (resultPath != null) {
+          final File file = File(resultPath);
+          await file.writeAsBytes(pngBytes);
+          _showNotification(
+              'Berhasil', 'QR Code berhasil disimpan ke: $resultPath');
+          log('File QR Code berhasil diekspor ke: $resultPath');
+        } else {
+          _showNotification(
+              'Ekspor Dibatalkan', 'Ekspor dibatalkan oleh pengguna.',
+              isError: true);
+        }
       } else {
-        _showNotification(
-            'Gagal', 'Gagal menyimpan gambar. Periksa izin aplikasi.',
-            isError: true);
-        log('Error saving image: $success');
+        // Logic for mobile platforms (Android & iOS)
+        final tempDir = await getTemporaryDirectory();
+        final file = await File('${tempDir.path}/$fileName').create();
+        await file.writeAsBytes(pngBytes);
+
+        final success =
+            await GallerySaver.saveImage(file.path, albumName: 'Strata Lite');
+
+        if (success == true) {
+          _showNotification('Berhasil', 'QR Code berhasil disimpan ke galeri.');
+        } else {
+          _showNotification(
+              'Gagal', 'Gagal menyimpan gambar. Periksa izin aplikasi.',
+              isError: true);
+          log('Error saving image: $success');
+        }
       }
     } catch (e) {
       _showNotification('Gagal', 'Terjadi kesalahan saat mengekspor QR code.',
