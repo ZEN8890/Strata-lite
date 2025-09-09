@@ -26,10 +26,8 @@ class _ScanBarcodeScreenState extends State<ScanBarcodeScreen> {
   MobileScannerController? _scannerController;
   bool _isLoading = false;
   bool _isScanning = false;
-  Timer? _alertTimer;
 
   Timer? _notificationTimer;
-  Rect? _detectedBarcodeRect;
 
   Item? _scannedItem;
   bool _isQuantityBased = true;
@@ -82,7 +80,6 @@ class _ScanBarcodeScreenState extends State<ScanBarcodeScreen> {
     _remarksController.dispose();
     _scannerController?.stop();
     _scannerController?.dispose();
-    _alertTimer?.cancel();
     _notificationTimer?.cancel();
     _audioPlayer.dispose();
     super.dispose();
@@ -149,7 +146,6 @@ class _ScanBarcodeScreenState extends State<ScanBarcodeScreen> {
       _barcodeController.clear();
       _quantityController.clear();
       _remarksController.clear();
-      _detectedBarcodeRect = null;
     });
 
     try {
@@ -166,10 +162,6 @@ class _ScanBarcodeScreenState extends State<ScanBarcodeScreen> {
   }
 
   void _onBarcodeDetected(BarcodeCapture capture) {
-    if (_alertTimer != null && _alertTimer!.isActive) {
-      return;
-    }
-
     if (capture.barcodes.isNotEmpty) {
       final Barcode detectedBarcode = capture.barcodes.first;
       final String? barcodeValue = detectedBarcode.rawValue;
@@ -177,49 +169,26 @@ class _ScanBarcodeScreenState extends State<ScanBarcodeScreen> {
       log('Scanned barcode result: $barcodeValue (Format: ${detectedBarcode.format})');
 
       if (barcodeValue != null) {
-        if (detectedBarcode.corners.isNotEmpty) {
-          setState(() {
-            final double minX = detectedBarcode.corners
-                .map((e) => e.dx)
-                .reduce((a, b) => a < b ? a : b);
-            final double minY = detectedBarcode.corners
-                .map((e) => e.dy)
-                .reduce((a, b) => a < b ? a : b);
-            final double maxX = detectedBarcode.corners
-                .map((e) => e.dx)
-                .reduce((a, b) => a > b ? a : b);
-            final double maxY = detectedBarcode.corners
-                .map((e) => e.dy)
-                .reduce((a, b) => a > b ? a : b);
-            _detectedBarcodeRect = Rect.fromLTRB(minX, minY, maxX, maxY);
-          });
-        }
-
         _scannerController?.stop();
-
-        Future.delayed(const Duration(seconds: 2), () {
-          if (!context.mounted) return;
-          setState(() {
-            _isScanning = false;
-            _detectedBarcodeRect = null;
-          });
-
-          if (barcodeValue.startsWith('group:')) {
-            String groupId = barcodeValue.substring(6);
-            _showNotification('QR Code Grup Ditemukan', 'Memuat item grup...');
-            _showGroupItemsSelection(groupId);
-          } else if (barcodeValue.length == 13) {
-            _barcodeController.text = barcodeValue;
-            _showNotification(
-                'Barcode Ditemukan', 'Barcode EAN-13 terdeteksi.');
-            _playScanSound();
-            _fetchItemDetails(barcodeValue);
-          } else {
-            _showNotification('Barcode Invalid',
-                'Barcode tidak valid atau bukan EAN-13 / QR Code grup.',
-                isError: true);
-          }
+        setState(() {
+          _isScanning = false;
         });
+
+        if (barcodeValue.startsWith('group:')) {
+          String groupId = barcodeValue.substring(6);
+          _showNotification('QR Code Grup Ditemukan', 'Memuat item grup...');
+          _playScanSound();
+          _showGroupItemsSelection(groupId);
+        } else if (barcodeValue.length == 13) {
+          _barcodeController.text = barcodeValue;
+          _showNotification('Barcode Ditemukan', 'Barcode EAN-13 terdeteksi.');
+          _playScanSound();
+          _fetchItemDetails(barcodeValue);
+        } else {
+          _showNotification('Barcode Invalid',
+              'Barcode tidak valid atau bukan EAN-13 / QR Code grup.',
+              isError: true);
+        }
       }
     }
   }
@@ -268,7 +237,10 @@ class _ScanBarcodeScreenState extends State<ScanBarcodeScreen> {
     }
   }
 
-  Future<void> _showGroupItemsSelection(String groupId) async {
+  Future<void> _showGroupItemsSelection(String groupId,
+      {Map<String, bool>? selectedItems,
+      Map<String, TextEditingController>? quantityControllers,
+      Map<String, TextEditingController>? remarksControllers}) async {
     try {
       DocumentSnapshot groupDoc =
           await _firestore.collection('groups').doc(groupId).get();
@@ -294,75 +266,137 @@ class _ScanBarcodeScreenState extends State<ScanBarcodeScreen> {
               Item.fromFirestore(doc.data() as Map<String, dynamic>, doc.id))
           .toList();
 
-      Map<String, bool> selectedItems = {};
-      Map<String, TextEditingController> quantityControllers = {};
-      Map<String, TextEditingController> remarksControllers = {};
+      Map<String, bool> currentSelectedItems = selectedItems ?? {};
+      Map<String, TextEditingController> currentQuantityControllers =
+          quantityControllers ?? {};
+      Map<String, TextEditingController> currentRemarksControllers =
+          remarksControllers ?? {};
 
       for (var item in allGroupItems) {
-        selectedItems[item.id!] = false;
+        if (!currentSelectedItems.containsKey(item.id)) {
+          currentSelectedItems[item.id!] = false;
+        }
         if (item.quantityOrRemark is int) {
-          quantityControllers[item.id!] = TextEditingController();
+          if (!currentQuantityControllers.containsKey(item.id)) {
+            currentQuantityControllers[item.id!] = TextEditingController();
+          }
         } else {
-          remarksControllers[item.id!] = TextEditingController();
+          if (!currentRemarksControllers.containsKey(item.id)) {
+            currentRemarksControllers[item.id!] = TextEditingController();
+          }
         }
       }
 
       showDialog(
         context: context,
         builder: (dialogContext) {
+          final TextEditingController searchController =
+              TextEditingController();
           return StatefulBuilder(
             builder: (context, setState) {
+              final filteredItems = allGroupItems.where((item) {
+                final searchQuery = searchController.text.toLowerCase();
+                return item.name.toLowerCase().contains(searchQuery);
+              }).toList();
+
               return AlertDialog(
                 title: Text('Pilih Item dari Grup "${group.name}"'),
                 content: SizedBox(
                   width: double.maxFinite,
-                  child: ListView.builder(
-                    itemCount: allGroupItems.length,
-                    itemBuilder: (context, index) {
-                      final item = allGroupItems[index];
-                      final isSelected = selectedItems[item.id] ?? false;
-
-                      return Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          CheckboxListTile(
-                            title: Text(item.name),
-                            subtitle: Text(
-                                'Stok: ${item.quantityOrRemark.toString()}'),
-                            value: isSelected,
-                            onChanged: (bool? newValue) {
-                              setState(() {
-                                selectedItems[item.id!] = newValue!;
-                              });
-                            },
-                          ),
-                          if (isSelected)
-                            Padding(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 16.0, vertical: 8.0),
-                              child: item.quantityOrRemark is int
-                                  ? TextField(
-                                      controller: quantityControllers[item.id],
-                                      decoration: InputDecoration(
-                                        labelText: _isAdding
-                                            ? 'Kuantitas Ditambah'
-                                            : 'Kuantitas Diambil',
-                                        border: const OutlineInputBorder(),
-                                      ),
-                                      keyboardType: TextInputType.number,
-                                    )
-                                  : TextField(
-                                      controller: remarksControllers[item.id],
-                                      decoration: const InputDecoration(
-                                        labelText: 'Remarks Pengambilan',
-                                        border: OutlineInputBorder(),
-                                      ),
-                                      maxLines: 3,
-                                    ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      TextField(
+                        controller: searchController,
+                        decoration: InputDecoration(
+                          labelText: 'Cari Item',
+                          border: OutlineInputBorder(),
+                          prefixIcon: Icon(Icons.search),
+                        ),
+                        onChanged: (value) {
+                          setState(() {});
+                        },
+                      ),
+                      SizedBox(height: 10),
+                      if (currentSelectedItems.values.any((element) => element))
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Item Terpilih:',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 16,
+                              ),
                             ),
-                        ],
-                      );
-                    },
+                            ...allGroupItems
+                                .where((item) =>
+                                    currentSelectedItems[item.id] == true)
+                                .map((item) {
+                              return Text('- ${item.name}');
+                            }).toList(),
+                            Divider(),
+                          ],
+                        ),
+                      Flexible(
+                        child: ListView.builder(
+                          shrinkWrap: true,
+                          itemCount: filteredItems.length,
+                          itemBuilder: (context, index) {
+                            final item = filteredItems[index];
+                            final isSelected =
+                                currentSelectedItems[item.id] ?? false;
+
+                            return Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                CheckboxListTile(
+                                  title: Text(item.name),
+                                  subtitle: Text(
+                                      'Stok: ${item.quantityOrRemark.toString()}'),
+                                  value: isSelected,
+                                  onChanged: (bool? newValue) {
+                                    setState(() {
+                                      currentSelectedItems[item.id!] =
+                                          newValue!;
+                                    });
+                                  },
+                                ),
+                                if (isSelected)
+                                  Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 16.0, vertical: 8.0),
+                                    child: item.quantityOrRemark is int
+                                        ? TextField(
+                                            controller:
+                                                currentQuantityControllers[
+                                                    item.id],
+                                            decoration: InputDecoration(
+                                              labelText: _isAdding
+                                                  ? 'Kuantitas Ditambah'
+                                                  : 'Kuantitas Diambil',
+                                              border:
+                                                  const OutlineInputBorder(),
+                                            ),
+                                            keyboardType: TextInputType.number,
+                                          )
+                                        : TextField(
+                                            controller:
+                                                currentRemarksControllers[
+                                                    item.id],
+                                            decoration: const InputDecoration(
+                                              labelText: 'Remarks Pengambilan',
+                                              border: OutlineInputBorder(),
+                                            ),
+                                            maxLines: 3,
+                                          ),
+                                  ),
+                              ],
+                            );
+                          },
+                        ),
+                      ),
+                    ],
                   ),
                 ),
                 actions: [
@@ -373,11 +407,11 @@ class _ScanBarcodeScreenState extends State<ScanBarcodeScreen> {
                   ElevatedButton(
                     onPressed: () {
                       _confirmAndProcessGroupItems(
-                          selectedItems,
-                          quantityControllers,
-                          remarksControllers,
-                          allGroupItems);
-                      Navigator.pop(dialogContext);
+                          currentSelectedItems,
+                          currentQuantityControllers,
+                          allGroupItems,
+                          currentRemarksControllers,
+                          parentDialogContext: dialogContext);
                     },
                     child: const Text('Konfirmasi'),
                   ),
@@ -398,8 +432,9 @@ class _ScanBarcodeScreenState extends State<ScanBarcodeScreen> {
   Future<void> _confirmAndProcessGroupItems(
       Map<String, bool> selectedItems,
       Map<String, TextEditingController> quantityControllers,
+      List<Item> allGroupItems,
       Map<String, TextEditingController> remarksControllers,
-      List<Item> allGroupItems) async {
+      {required BuildContext parentDialogContext}) async {
     List<Map<String, dynamic>> itemsToProcess = [];
 
     for (var item in allGroupItems) {
@@ -432,6 +467,7 @@ class _ScanBarcodeScreenState extends State<ScanBarcodeScreen> {
       return;
     }
 
+    // Menampilkan dialog konfirmasi baru dengan daftar item yang akan diproses
     bool? confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -456,17 +492,23 @@ class _ScanBarcodeScreenState extends State<ScanBarcodeScreen> {
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Batal'),
+            onPressed: () {
+              Navigator.pop(context, false);
+            },
+            child: const Text('Kembali'),
           ),
           ElevatedButton(
-            onPressed: () => Navigator.pop(context, true),
+            onPressed: () =>
+                Navigator.pop(context, true), // Konfirmasi dan proses
             child: const Text('Proses'),
           ),
         ],
       ),
     );
-
+    // Tutup dialog pemilihan item sebelum memproses item.
+    if (parentDialogContext.mounted) {
+      Navigator.pop(parentDialogContext);
+    }
     if (confirmed == true) {
       _processSelectedGroupItems(itemsToProcess);
     }
@@ -530,24 +572,29 @@ class _ScanBarcodeScreenState extends State<ScanBarcodeScreen> {
       return;
     }
 
-    if (_isQuantityBased) {
-      int? quantity = int.tryParse(_quantityController.text.trim());
-      if (quantity == null || quantity <= 0) {
-        _showNotification('Kuantitas Invalid', 'Kuantitas harus lebih dari 0.',
-            isError: true);
-        return;
-      }
+    setState(() {
+      _isLoading = true;
+    });
 
-      int newQuantity = _isAdding ? quantity : -quantity;
+    try {
+      if (_isQuantityBased) {
+        int? quantity = int.tryParse(_quantityController.text.trim());
+        if (quantity == null || quantity <= 0) {
+          _showNotification(
+              'Kuantitas Invalid', 'Kuantitas harus lebih dari 0.',
+              isError: true);
+          return;
+        }
 
-      if (!_isAdding && quantity > _scannedItem!.quantityOrRemark) {
-        _showNotification('Stok Tidak Cukup',
-            'Kuantitas yang diambil ($quantity) melebihi stok yang tersedia (${_scannedItem!.quantityOrRemark}).',
-            isError: true);
-        return;
-      }
+        int newQuantity = _isAdding ? quantity : -quantity;
 
-      try {
+        if (!_isAdding && quantity > _scannedItem!.quantityOrRemark) {
+          _showNotification('Stok Tidak Cukup',
+              'Kuantitas yang diambil ($quantity) melebihi stok yang tersedia (${_scannedItem!.quantityOrRemark}).',
+              isError: true);
+          return;
+        }
+
         await _firestore.collection('items').doc(_scannedItem!.id).update({
           'quantityOrRemark': FieldValue.increment(newQuantity),
         });
@@ -571,26 +618,29 @@ class _ScanBarcodeScreenState extends State<ScanBarcodeScreen> {
               : _remarksController.text.trim(),
           remainingStock: updatedStock,
         );
-      } catch (e) {
-        _showNotification('Gagal Memproses Stok', 'Gagal memproses stok: $e',
-            isError: true);
-        log('Error processing stock: $e');
-        return;
+      } else {
+        String remarks = _remarksController.text.trim();
+        if (remarks.isEmpty) {
+          _showNotification(
+              'Remarks Kosong', 'Remarks tidak boleh kosong untuk item ini.',
+              isError: true);
+          return;
+        }
+        await _addLogEntry(_scannedItem!, remarks, remarks: remarks);
+        _showNotification('Pengambilan Dicatat',
+            'Pengambilan item "${_scannedItem!.name}" dicatat.',
+            isError: false);
       }
-    } else {
-      String remarks = _remarksController.text.trim();
-      if (remarks.isEmpty) {
-        _showNotification(
-            'Remarks Kosong', 'Remarks tidak boleh kosong untuk item ini.',
-            isError: true);
-        return;
-      }
-      await _addLogEntry(_scannedItem!, remarks, remarks: remarks);
-      _showNotification('Pengambilan Dicatat',
-          'Pengambilan item "${_scannedItem!.name}" dicatat.',
-          isError: false);
+    } catch (e) {
+      _showNotification('Gagal Memproses Stok', 'Gagal memproses stok: $e',
+          isError: true);
+      log('Error processing stock: $e');
+    } finally {
+      _clearAllForms();
     }
+  }
 
+  void _clearAllForms() {
     setState(() {
       _barcodeController.clear();
       _quantityController.clear();
@@ -645,6 +695,9 @@ class _ScanBarcodeScreenState extends State<ScanBarcodeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final Size screenSize = MediaQuery.of(context).size;
+    final double scanWindowSize = screenSize.width * 0.7;
+
     return Padding(
       padding: const EdgeInsets.all(16.0),
       child: GestureDetector(
@@ -657,17 +710,14 @@ class _ScanBarcodeScreenState extends State<ScanBarcodeScreen> {
                   MobileScanner(
                     controller: _scannerController,
                     onDetect: _onBarcodeDetected,
-                  ),
-                  if (_detectedBarcodeRect != null)
-                    Positioned.fromRect(
-                      rect: _detectedBarcodeRect!,
-                      child: Container(
-                        decoration: BoxDecoration(
-                          border: Border.all(color: Colors.red, width: 4),
-                          borderRadius: BorderRadius.zero,
-                        ),
-                      ),
+                    scanWindow: Rect.fromCenter(
+                      center:
+                          Offset(screenSize.width / 2, screenSize.height / 2),
+                      width: scanWindowSize,
+                      height: scanWindowSize,
                     ),
+                  ),
+                  _buildScanWindowOverlay(scanWindowSize, scanWindowSize),
                   Positioned(
                     bottom: 16,
                     left: 16,
@@ -857,6 +907,42 @@ class _ScanBarcodeScreenState extends State<ScanBarcodeScreen> {
                   ),
                 ],
               ),
+      ),
+    );
+  }
+
+  Widget _buildScanWindowOverlay(double width, double height) {
+    return Positioned.fill(
+      child: Stack(
+        children: [
+          Align(
+            alignment: Alignment.center,
+            child: Container(
+              width: width,
+              height: height,
+              decoration: BoxDecoration(
+                border: Border.all(color: Colors.red, width: 4),
+                borderRadius: BorderRadius.circular(16.0),
+              ),
+            ),
+          ),
+          Align(
+            alignment: Alignment.topCenter,
+            child: Padding(
+              padding: EdgeInsets.only(
+                  top:
+                      MediaQuery.of(context).size.height / 2 - height / 2 - 50),
+              child: const Text(
+                'Arahkan kamera ke barcode',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

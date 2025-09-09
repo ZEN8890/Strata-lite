@@ -8,7 +8,7 @@ import 'package:strata_lite/models/group.dart';
 import 'package:strata_lite/models/item.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'dart:developer';
-import 'package:gallery_saver/gallery_saver.dart'; // Ganti import ini
+import 'package:gallery_saver/gallery_saver.dart';
 import 'package:flutter/rendering.dart';
 import 'dart:ui' as ui;
 import 'dart:typed_data';
@@ -24,7 +24,7 @@ class GroupManagementDialog extends StatefulWidget {
 
 class _GroupManagementDialogState extends State<GroupManagementDialog> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  final GlobalKey _qrKey = GlobalKey(); // Kunci untuk menangkap widget
+  final GlobalKey _qrKey = GlobalKey();
 
   Future<void> _showNotification(String title, String message,
       {bool isError = false}) async {
@@ -40,7 +40,10 @@ class _GroupManagementDialogState extends State<GroupManagementDialog> {
               fontSize: 14.0,
               color: isError ? Colors.red[800] : Colors.green[800])),
       flushbarPosition: FlushbarPosition.TOP,
+      flushbarStyle: FlushbarStyle.FLOATING,
       backgroundColor: isError ? Colors.red[100]! : Colors.green[100]!,
+      margin: const EdgeInsets.all(8),
+      borderRadius: BorderRadius.circular(8),
       duration: const Duration(seconds: 3),
     ).show(context);
   }
@@ -83,7 +86,6 @@ class _GroupManagementDialogState extends State<GroupManagementDialog> {
               Group(id: docRef.id, name: nameController.text.trim());
           _showNotification(
               'Berhasil', 'Grup "${newGroup.name}" berhasil dibuat.');
-          // Tampilkan QR Code secara otomatis
           if (mounted) {
             _showQrCodeForGroup(newGroup);
           }
@@ -189,9 +191,10 @@ class _GroupManagementDialogState extends State<GroupManagementDialog> {
                         'itemIds': selectedItemIds.toList(),
                       });
                       if (context.mounted) {
+                        Navigator.pop(
+                            context); // Menutup dialog terlebih dahulu
                         await _showNotification(
                             'Berhasil', 'Item di grup berhasil diperbarui.');
-                        Navigator.pop(context);
                       }
                     } catch (e) {
                       log('Error saving group items: $e');
@@ -212,7 +215,6 @@ class _GroupManagementDialogState extends State<GroupManagementDialog> {
     );
   }
 
-  // Metode untuk mengekspor QR code ke galeri
   Future<void> _exportQrCode() async {
     try {
       RenderRepaintBoundary boundary =
@@ -228,7 +230,6 @@ class _GroupManagementDialogState extends State<GroupManagementDialog> {
       if (defaultTargetPlatform == TargetPlatform.windows ||
           defaultTargetPlatform == TargetPlatform.macOS ||
           defaultTargetPlatform == TargetPlatform.linux) {
-        // Logic for desktop platforms using file_picker
         final String? resultPath = await FilePicker.platform.saveFile(
           fileName: fileName,
           type: FileType.custom,
@@ -249,7 +250,6 @@ class _GroupManagementDialogState extends State<GroupManagementDialog> {
               isError: true);
         }
       } else {
-        // Logic for mobile platforms (Android & iOS)
         final tempDir = await getTemporaryDirectory();
         final file = await File('${tempDir.path}/$fileName').create();
         await file.writeAsBytes(pngBytes);
@@ -273,7 +273,6 @@ class _GroupManagementDialogState extends State<GroupManagementDialog> {
     }
   }
 
-  // Tambahkan method baru untuk menampilkan QR Code
   void _showQrCodeForGroup(Group group) {
     if (group.id == null) {
       _showNotification('Error', 'ID grup tidak valid.', isError: true);
@@ -365,7 +364,6 @@ class _GroupManagementDialogState extends State<GroupManagementDialog> {
                   trailing: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      // Tombol QR Code baru
                       IconButton(
                         icon: const Icon(Icons.qr_code, color: Colors.purple),
                         onPressed: () => _showQrCodeForGroup(group),
