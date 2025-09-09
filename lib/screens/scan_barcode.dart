@@ -673,7 +673,6 @@ class _ScanBarcodeScreenState extends State<ScanBarcodeScreen> {
 
     LogEntry newLog = LogEntry(
       itemName: item.name,
-      barcode: item.barcode,
       quantityOrRemark: quantityOrRemark,
       timestamp: DateTime.now(),
       staffName: staffName,

@@ -346,7 +346,6 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
       sheetObject.appendRow([
         TextCellValue('Tipe Log'), // Added
         TextCellValue('Nama Barang'),
-        TextCellValue('Barcode'),
         TextCellValue('Kuantitas/Remarks'),
         TextCellValue('Tanggal & Waktu'),
         TextCellValue('Nama Staff'),
@@ -370,7 +369,6 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
         bool matchesSearch = logEntry.itemName
                 .toLowerCase()
                 .contains(lowerCaseQuery) ||
-            logEntry.barcode.toLowerCase().contains(lowerCaseQuery) ||
             logEntry.staffName.toLowerCase().contains(lowerCaseQuery) ||
             logEntry.staffDepartment.toLowerCase().contains(lowerCaseQuery) ||
             (logEntry.remarks?.toLowerCase().contains(lowerCaseQuery) ?? false);
@@ -440,7 +438,6 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
         sheetObject.appendRow([
           TextCellValue(logType), // Added
           TextCellValue(logEntry.itemName),
-          TextCellValue(logEntry.barcode),
           TextCellValue(logEntry.quantityOrRemark.toString()),
           TextCellValue(formattedDateTime),
           TextCellValue(logEntry.staffName),
@@ -975,9 +972,6 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
                       bool matchesSearch = logEntry.itemName
                               .toLowerCase()
                               .contains(lowerCaseQuery) ||
-                          logEntry.barcode
-                              .toLowerCase()
-                              .contains(lowerCaseQuery) ||
                           logEntry.staffName
                               .toLowerCase()
                               .contains(lowerCaseQuery) ||
@@ -1155,12 +1149,6 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
                                     const Icon(Icons.qr_code_scanner,
                                         size: 20, color: Colors.blueGrey),
                                     const SizedBox(width: 10),
-                                    Text(
-                                      'Barcode: ${logEntry.barcode}',
-                                      style: TextStyle(
-                                          fontSize: 16,
-                                          color: Colors.blueGrey[700]),
-                                    ),
                                   ],
                                 ),
                                 const SizedBox(height: 6),

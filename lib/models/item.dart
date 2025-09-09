@@ -4,7 +4,6 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 class Item {
   String? id;
   final String name;
-  final String barcode;
   final dynamic quantityOrRemark;
   final DateTime createdAt;
   final DateTime? expiryDate;
@@ -13,7 +12,6 @@ class Item {
   Item({
     this.id,
     required this.name,
-    required this.barcode,
     required this.quantityOrRemark,
     required this.createdAt,
     this.expiryDate,
@@ -24,7 +22,6 @@ class Item {
     return Item(
       id: docId,
       name: firestoreData['name'] ?? '',
-      barcode: firestoreData['barcode'] ?? '',
       quantityOrRemark: firestoreData['quantityOrRemark'],
       createdAt: (firestoreData['createdAt'] as Timestamp).toDate(),
       expiryDate: (firestoreData['expiryDate'] as Timestamp?)?.toDate(),
@@ -35,7 +32,6 @@ class Item {
   Map<String, dynamic> toFirestore() {
     return {
       'name': name,
-      'barcode': barcode,
       'quantityOrRemark': quantityOrRemark,
       'createdAt': createdAt,
       'expiryDate': expiryDate,

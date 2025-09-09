@@ -1,6 +1,5 @@
 // Path: lib/screens/admin_dashboard_screen.dart
 import 'package:flutter/material.dart';
-import 'package:strata_lite/screens/add_item_screen.dart';
 import 'package:strata_lite/screens/item_list_screen.dart';
 import 'package:strata_lite/screens/time_log_screen.dart';
 import 'package:strata_lite/screens/scan_barcode.dart';
@@ -37,12 +36,10 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   // Daftar halaman untuk dashboard admin
   final List<Widget> _pages = [
     const ItemListScreen(),
-    const AddItemScreen(),
-    const Center(child: Text('Halaman Impor/Ekspor Data (Segera Hadir!)')),
     const TimeLogScreen(),
-    const SettingsScreen(),
     const ScanBarcodeScreen(),
     const UsersScreen(),
+    const SettingsScreen(),
   ];
 
   @override
@@ -207,18 +204,10 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
               },
             ),
             ListTile(
-              leading: const Icon(Icons.add_box),
-              title: const Text('Tambah Barang Baru'),
-              onTap: () {
-                _onItemTapped(1);
-                Navigator.pop(context);
-              },
-            ),
-            ListTile(
               leading: const Icon(Icons.history),
               title: const Text('Log Pengambilan Barang'),
               onTap: () {
-                _onItemTapped(3);
+                _onItemTapped(1);
                 Navigator.pop(context);
               },
             ),
@@ -226,7 +215,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
               leading: const Icon(Icons.shopping_cart),
               title: const Text('Ambil/tambah Barang'),
               onTap: () {
-                _onItemTapped(5);
+                _onItemTapped(2);
                 Navigator.pop(context);
               },
             ),
@@ -235,7 +224,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
               leading: const Icon(Icons.group),
               title: const Text('Manajemen Pengguna'),
               onTap: () {
-                _onItemTapped(6);
+                _onItemTapped(3);
                 Navigator.pop(context);
               },
             ),

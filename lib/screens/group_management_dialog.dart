@@ -161,7 +161,6 @@ class _GroupManagementDialogState extends State<GroupManagementDialog> {
                     final isSelected = selectedItemIds.contains(item.id);
                     return CheckboxListTile(
                       title: Text(item.name),
-                      subtitle: Text('Barcode: ${item.barcode}'),
                       value: isSelected,
                       onChanged: (bool? newValue) {
                         setState(() {

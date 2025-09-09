@@ -204,7 +204,6 @@ class _ItemListScreenState extends State<ItemListScreen> {
       }
       sheetObject.appendRow([
         TextCellValue('Nama Barang'),
-        TextCellValue('Barcode'),
         TextCellValue('Kuantitas/Remarks'),
         TextCellValue('Tanggal Ditambahkan'),
         TextCellValue('Expiry Date')
@@ -222,7 +221,6 @@ class _ItemListScreenState extends State<ItemListScreen> {
             : 'N/A';
         sheetObject.appendRow([
           TextCellValue(item.name),
-          TextCellValue(item.barcode),
           TextCellValue(item.quantityOrRemark.toString()),
           TextCellValue(formattedDate),
           TextCellValue(formattedExpiryDate)
@@ -327,14 +325,11 @@ class _ItemListScreenState extends State<ItemListScreen> {
                 .toList()
             : [];
         final nameIndex = headerRow.indexOf('Nama Barang');
-        final barcodeIndex = headerRow.indexOf('Barcode');
         final quantityOrRemarkIndex = headerRow.indexOf('Kuantitas/Remarks');
         final expiryDateIndex = headerRow.indexOf('Expiry Date');
-        if (nameIndex == -1 ||
-            barcodeIndex == -1 ||
-            quantityOrRemarkIndex == -1) {
+        if (nameIndex == -1 || quantityOrRemarkIndex == -1) {
           _showNotification('Impor Gagal',
-              'File Excel tidak memiliki semua kolom yang diperlukan (Nama Barang, Barcode, Kuantitas/Remarks).',
+              'File Excel tidak memiliki semua kolom yang diperlukan (Nama Barang, Kuantitas/Remarks).',
               isError: true);
           setState(() {
             _isLoadingImport = false;
@@ -348,10 +343,6 @@ class _ItemListScreenState extends State<ItemListScreen> {
                   ? row[nameIndex]?.value?.toString()
                   : '') ??
               '';
-          String barcode = (row.length > barcodeIndex
-                  ? row[barcodeIndex]?.value?.toString()
-                  : '') ??
-              '';
           String quantityOrRemarkString = (row.length > quantityOrRemarkIndex
                   ? row[quantityOrRemarkIndex]?.value?.toString()
                   : '') ??
@@ -361,8 +352,8 @@ class _ItemListScreenState extends State<ItemListScreen> {
                       ? row[expiryDateIndex]?.value?.toString()
                       : '') ??
                   '';
-          if (name.isEmpty || barcode.isEmpty) {
-            log('Skipping row $i: Nama Barang atau Barcode kosong.');
+          if (name.isEmpty) {
+            log('Skipping row $i: Nama Barang kosong.');
             skippedCount++;
             continue;
           }
@@ -394,31 +385,29 @@ class _ItemListScreenState extends State<ItemListScreen> {
           }
           QuerySnapshot existingItems = await _firestore
               .collection('items')
-              .where('barcode', isEqualTo: barcode)
+              .where('name', isEqualTo: name)
               .limit(1)
               .get();
           if (existingItems.docs.isNotEmpty) {
             String itemId = existingItems.docs.first.id;
             batch.update(_firestore.collection('items').doc(itemId), {
               'name': name,
-              'barcode': barcode,
               'quantityOrRemark': quantityOrRemark,
               'expiryDate': expiryDate,
             });
             updatedCount++;
-            log('Item updated: $name with barcode $barcode');
+            log('Item updated: $name');
           } else {
             batch.set(
                 _firestore.collection('items').doc(),
                 Item(
                   name: name,
-                  barcode: barcode,
                   quantityOrRemark: quantityOrRemark,
                   createdAt: DateTime.now(),
                   expiryDate: expiryDate,
                 ).toFirestore());
             importedCount++;
-            log('Item imported: $name with barcode $barcode');
+            log('Item imported: $name');
           }
         }
         await batch.commit();
@@ -755,8 +744,7 @@ class _ItemListScreenState extends State<ItemListScreen> {
                 List<Item> filteredItems = allItems.where((item) {
                   final String lowerCaseQuery = _searchQuery.toLowerCase();
                   bool matchesSearch =
-                      item.name.toLowerCase().contains(lowerCaseQuery) ||
-                          item.barcode.toLowerCase().contains(lowerCaseQuery);
+                      item.name.toLowerCase().contains(lowerCaseQuery);
                   if (!matchesSearch) return false;
 
                   if (_isGroupedView) {
@@ -841,8 +829,6 @@ class _ItemListScreenState extends State<ItemListScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const SizedBox(height: 4),
-                Text('Barcode: ${item.barcode}',
-                    style: TextStyle(fontSize: 14, color: textColor)),
                 Text(
                     item.quantityOrRemark is int
                         ? 'Stok: ${item.quantityOrRemark}'
@@ -933,7 +919,7 @@ class _ItemListScreenState extends State<ItemListScreen> {
                 style:
                     TextStyle(fontWeight: FontWeight.bold, color: textColor)),
             subtitle: Text(
-              'Barcode: ${item.barcode}\n${item.quantityOrRemark is int ? 'Stok: ${item.quantityOrRemark}' : 'Jenis: Tidak Bisa Dihitung'}',
+              '${item.quantityOrRemark is int ? 'Stok: ${item.quantityOrRemark}' : 'Jenis: Tidak Bisa Dihitung'}',
               style: TextStyle(color: textColor),
             ),
             trailing: IconButton(
