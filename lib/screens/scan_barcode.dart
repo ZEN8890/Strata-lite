@@ -137,7 +137,12 @@ class _ScanBarcodeScreenState extends State<ScanBarcodeScreen> {
     });
   }
 
-  void _startScanBarcode() {
+  Future<void> _startScanBarcode() async {
+    if (_isScanning || _isLoading) {
+      log('Scan or loading already in progress.');
+      return;
+    }
+
     setState(() {
       _isScanning = true;
       _scannedItem = null;
@@ -146,9 +151,18 @@ class _ScanBarcodeScreenState extends State<ScanBarcodeScreen> {
       _remarksController.clear();
       _detectedBarcodeRect = null;
     });
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _scannerController?.start();
-    });
+
+    try {
+      await _scannerController?.start();
+    } catch (e) {
+      log('Error starting scanner: $e');
+      setState(() {
+        _isScanning = false;
+      });
+      _showNotification(
+          'Gagal Memulai Pemindai', 'Terjadi kesalahan saat memulai kamera: $e',
+          isError: true);
+    }
   }
 
   void _onBarcodeDetected(BarcodeCapture capture) {
@@ -162,26 +176,50 @@ class _ScanBarcodeScreenState extends State<ScanBarcodeScreen> {
 
       log('Scanned barcode result: $barcodeValue (Format: ${detectedBarcode.format})');
 
-      _scannerController?.stop();
-      setState(() {
-        _isScanning = false;
-        _detectedBarcodeRect =
-            null; // Adjust this based on your actual requirement
-      });
+      if (barcodeValue != null) {
+        if (detectedBarcode.corners.isNotEmpty) {
+          setState(() {
+            final double minX = detectedBarcode.corners
+                .map((e) => e.dx)
+                .reduce((a, b) => a < b ? a : b);
+            final double minY = detectedBarcode.corners
+                .map((e) => e.dy)
+                .reduce((a, b) => a < b ? a : b);
+            final double maxX = detectedBarcode.corners
+                .map((e) => e.dx)
+                .reduce((a, b) => a > b ? a : b);
+            final double maxY = detectedBarcode.corners
+                .map((e) => e.dy)
+                .reduce((a, b) => a > b ? a : b);
+            _detectedBarcodeRect = Rect.fromLTRB(minX, minY, maxX, maxY);
+          });
+        }
 
-      if (barcodeValue != null && barcodeValue.startsWith('group:')) {
-        String groupId = barcodeValue.substring(6);
-        _showNotification('QR Code Grup Ditemukan', 'Memuat item grup...');
-        _showGroupItemsSelection(groupId);
-      } else if (barcodeValue != null && barcodeValue.length == 13) {
-        _barcodeController.text = barcodeValue;
-        _showNotification('Barcode Ditemukan', 'Barcode EAN-13 terdeteksi.');
-        _playScanSound();
-        _fetchItemDetails(barcodeValue);
-      } else {
-        _showNotification('Barcode Invalid',
-            'Barcode tidak valid atau bukan EAN-13 / QR Code grup.',
-            isError: true);
+        _scannerController?.stop();
+
+        Future.delayed(const Duration(seconds: 2), () {
+          if (!context.mounted) return;
+          setState(() {
+            _isScanning = false;
+            _detectedBarcodeRect = null;
+          });
+
+          if (barcodeValue.startsWith('group:')) {
+            String groupId = barcodeValue.substring(6);
+            _showNotification('QR Code Grup Ditemukan', 'Memuat item grup...');
+            _showGroupItemsSelection(groupId);
+          } else if (barcodeValue.length == 13) {
+            _barcodeController.text = barcodeValue;
+            _showNotification(
+                'Barcode Ditemukan', 'Barcode EAN-13 terdeteksi.');
+            _playScanSound();
+            _fetchItemDetails(barcodeValue);
+          } else {
+            _showNotification('Barcode Invalid',
+                'Barcode tidak valid atau bukan EAN-13 / QR Code grup.',
+                isError: true);
+          }
+        });
       }
     }
   }
@@ -721,7 +759,7 @@ class _ScanBarcodeScreenState extends State<ScanBarcodeScreen> {
                               border: const OutlineInputBorder(),
                               filled: true,
                               fillColor: const Color(0xFFF3F4F6),
-                              suffixIcon: _isLoading
+                              suffixIcon: _isLoading || _isScanning
                                   ? const Padding(
                                       padding: EdgeInsets.all(8.0),
                                       child: CircularProgressIndicator(
