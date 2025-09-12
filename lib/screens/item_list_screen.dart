@@ -313,7 +313,7 @@ class _ItemListScreenState extends State<ItemListScreen> {
         var excel = Excel.decodeBytes(bytes);
         int importedCount = 0;
         int updatedCount = 0;
-        int skippedCount = 0;
+        List<String> failedItems = [];
         String? sheetName = excel.tables.keys.firstWhere(
           (key) => key == 'Daftar Barang',
           orElse: () => excel.tables.keys.first,
@@ -337,6 +337,13 @@ class _ItemListScreenState extends State<ItemListScreen> {
           return;
         }
         WriteBatch batch = _firestore.batch();
+
+        final existingItemsSnapshot =
+            await _firestore.collection('items').get();
+        final existingItemNames = existingItemsSnapshot.docs.map((doc) {
+          return (doc.data() as Map<String, dynamic>)['name'] as String;
+        }).toSet();
+
         for (int i = 1; i < (table.rows.length); i++) {
           var row = table.rows[i];
           String name = (row.length > nameIndex
@@ -352,92 +359,85 @@ class _ItemListScreenState extends State<ItemListScreen> {
                       ? row[expiryDateIndex]?.value?.toString()
                       : '') ??
                   '';
+
           if (name.isEmpty) {
             log('Skipping row $i: Nama Barang kosong.');
-            skippedCount++;
+            failedItems.add('Baris ${i + 1}: Nama Barang kosong.');
             continue;
           }
+
+          if (existingItemNames.contains(name)) {
+            log('Skipping row $i: Item dengan nama "$name" sudah ada.');
+            failedItems.add('"$name" (sudah ada)');
+            continue;
+          }
+
           dynamic quantityOrRemark;
           if (int.tryParse(quantityOrRemarkString) != null) {
             quantityOrRemark = int.parse(quantityOrRemarkString);
             if (quantityOrRemark < 0) {
               log('Skipping row $i: Kuantitas harus angka positif.');
-              skippedCount++;
+              failedItems.add('"$name" (kuantitas negatif)');
               continue;
             }
           } else {
             quantityOrRemark = quantityOrRemarkString;
             if (quantityOrRemark.isEmpty) {
               log('Skipping row $i: Remarks tidak boleh kosong.');
-              skippedCount++;
+              failedItems.add('"$name" (remarks kosong)');
               continue;
             }
           }
+
           DateTime? expiryDate;
           if (expiryDateString.isNotEmpty) {
             try {
               expiryDate = DateFormat('dd-MM-yyyy').parse(expiryDateString);
             } catch (e) {
               log('Skipping row $i: Format Expiry Date tidak valid. Format yang diharapkan: dd-MM-yyyy. Error: $e');
-              skippedCount++;
+              failedItems.add('"$name" (format expiry date tidak valid)');
               continue;
             }
           }
-          QuerySnapshot existingItems = await _firestore
-              .collection('items')
-              .where('name', isEqualTo: name)
-              .limit(1)
-              .get();
-          if (existingItems.docs.isNotEmpty) {
-            String itemId = existingItems.docs.first.id;
-            batch.update(_firestore.collection('items').doc(itemId), {
-              'name': name,
-              'quantityOrRemark': quantityOrRemark,
-              'expiryDate': expiryDate,
-            });
-            updatedCount++;
-            log('Item updated: $name');
-          } else {
-            batch.set(
-                _firestore.collection('items').doc(),
-                Item(
-                  name: name,
-                  quantityOrRemark: quantityOrRemark,
-                  createdAt: DateTime.now(),
-                  expiryDate: expiryDate,
-                ).toFirestore());
-            importedCount++;
-            log('Item imported: $name');
-          }
+
+          batch.set(
+              _firestore.collection('items').doc(),
+              Item(
+                name: name,
+                quantityOrRemark: quantityOrRemark,
+                createdAt: DateTime.now(),
+                expiryDate: expiryDate,
+              ).toFirestore());
+          importedCount++;
+          log('Item imported: $name');
         }
+
         await batch.commit();
+
         if (!context.mounted) {
           setState(() {
             _isLoadingImport = false;
           });
           return;
         }
+
         String importSummaryMessage = '';
         if (importedCount > 0) {
           importSummaryMessage += '$importedCount item baru berhasil diimpor.';
         }
-        if (updatedCount > 0) {
+
+        if (failedItems.isNotEmpty) {
           if (importedCount > 0) importSummaryMessage += '\n';
-          importSummaryMessage += '$updatedCount item berhasil diperbarui.';
-        }
-        if (skippedCount > 0) {
-          if (importedCount > 0 || updatedCount > 0) {
-            importSummaryMessage += '\n';
-          }
           importSummaryMessage +=
-              '$skippedCount baris dilewati karena data tidak valid.';
+              '${failedItems.length} baris dilewati karena data tidak valid atau duplikat. Detail: ${failedItems.join(', ')}';
         }
-        if (importedCount == 0 && updatedCount == 0 && skippedCount == 0) {
-          importSummaryMessage =
-              'Tidak ada item yang diimpor atau diperbarui dari file Excel.';
+
+        if (importedCount == 0 && failedItems.isEmpty) {
+          importSummaryMessage = 'Tidak ada item yang diimpor dari file Excel.';
         }
+
         _showNotification('Impor Selesai!', importSummaryMessage,
-            isError: (skippedCount > 0));
+            isError: failedItems.isNotEmpty);
         log('Ringkasan Impor: $importSummaryMessage');
       } else {
         _showNotification('Impor Dibatalkan', 'Pemilihan file dibatalkan.',
