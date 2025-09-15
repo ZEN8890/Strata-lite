@@ -37,6 +37,7 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
   TimeOfDay? _selectedStartTime;
   TimeOfDay? _selectedEndTime;
   String? _selectedClassification;
+  String _selectedTransactionType = 'Semua';
 
   List<String> _dynamicClassifications = ['Semua Klasifikasi'];
   bool _isClassificationsLoading = true;
@@ -131,13 +132,14 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
       _isClassificationsLoading = true;
     });
     try {
-      QuerySnapshot itemsSnapshot = await _firestore.collection('items').get();
+      QuerySnapshot logsSnapshot =
+          await _firestore.collection('log_entries').get();
       Set<String> uniqueClassifications = {};
 
-      for (var doc in itemsSnapshot.docs) {
+      for (var doc in logsSnapshot.docs) {
         final data = doc.data() as Map<String, dynamic>;
-        final classification = data['classification'] as String?;
-        if (classification != null && classification.isNotEmpty) {
+        final classification = data['itemClassification'];
+        if (classification is String && classification.isNotEmpty) {
           uniqueClassifications.add(classification);
         }
       }
@@ -218,6 +220,7 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
       _selectedStartTime = null;
       _selectedEndTime = null;
       _selectedClassification = 'Semua Klasifikasi';
+      _selectedTransactionType = 'Semua';
     });
     _showNotification('Filter Direset', 'Semua filter telah dihapus.');
   }
@@ -422,6 +425,19 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
             _selectedClassification != 'Semua Klasifikasi') {
           if (logEntry.itemClassification != _selectedClassification)
             return false;
+        }
+
+        // Filter tipe transaksi untuk ekspor
+        bool isAdding =
+            logEntry.quantityOrRemark is int && logEntry.quantityOrRemark > 0;
+        bool isTaking =
+            logEntry.quantityOrRemark is int && logEntry.quantityOrRemark < 0;
+
+        if (_selectedTransactionType == 'Penambahan' && !isAdding) {
+          return false;
+        }
+        if (_selectedTransactionType == 'Pengambilan' && !isTaking) {
+          return false;
         }
 
         return true;
@@ -811,8 +827,7 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
                                     fontWeight: FontWeight.bold, fontSize: 16)),
                             const SizedBox(height: 10),
                             DropdownButtonFormField<String>(
-                              value: _selectedClassification ??
-                                  _dynamicClassifications.first,
+                              value: _selectedClassification,
                               decoration: InputDecoration(
                                 labelText: 'Pilih Klasifikasi',
                                 border: const OutlineInputBorder(),
@@ -822,8 +837,9 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
                                 enabledBorder: OutlineInputBorder(
                                   borderRadius: BorderRadius.circular(8),
                                   borderSide: BorderSide(
-                                      color: _selectedClassification !=
-                                              'Semua Klasifikasi'
+                                      color: _selectedClassification != null &&
+                                              _selectedClassification !=
+                                                  'Semua Klasifikasi'
                                           ? Colors.blue[700]!
                                           : Colors.grey[400]!),
                                 ),
@@ -850,6 +866,48 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
                                                 : newValue;
                                       });
                                     },
+                            ),
+                            const SizedBox(height: 15),
+                            const Text('Filter Tipe Transaksi:',
+                                style: TextStyle(
+                                    fontWeight: FontWeight.bold, fontSize: 16)),
+                            const SizedBox(height: 10),
+                            DropdownButtonFormField<String>(
+                              value: _selectedTransactionType,
+                              decoration: InputDecoration(
+                                labelText: 'Pilih Tipe Transaksi',
+                                border: const OutlineInputBorder(),
+                                prefixIcon: const Icon(Icons.swap_vert),
+                                contentPadding: const EdgeInsets.symmetric(
+                                    horizontal: 10, vertical: 12),
+                                enabledBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                  borderSide: BorderSide(
+                                      color: _selectedTransactionType != 'Semua'
+                                          ? Theme.of(context).primaryColor
+                                          : Colors.grey[400]!),
+                                ),
+                                focusedBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                  borderSide: BorderSide(
+                                      color: Theme.of(context).primaryColor,
+                                      width: 2),
+                                ),
+                              ),
+                              items: ['Semua', 'Penambahan', 'Pengambilan']
+                                  .map((String value) {
+                                return DropdownMenuItem<String>(
+                                  value: value,
+                                  child: Text(value),
+                                );
+                              }).toList(),
+                              onChanged: (String? newValue) {
+                                if (newValue != null) {
+                                  setState(() {
+                                    _selectedTransactionType = newValue;
+                                  });
+                                }
+                              },
                             ),
                             if (_isClassificationsLoading)
                               const Padding(
@@ -1040,6 +1098,21 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
                             _selectedClassification) return false;
                       }
 
+                      // Logika filter tipe transaksi
+                      bool isAdding = logEntry.quantityOrRemark is int &&
+                          logEntry.quantityOrRemark > 0;
+                      bool isTaking = logEntry.quantityOrRemark is int &&
+                          logEntry.quantityOrRemark < 0;
+
+                      if (_selectedTransactionType == 'Penambahan' &&
+                          !isAdding) {
+                        return false;
+                      }
+                      if (_selectedTransactionType == 'Pengambilan' &&
+                          !isTaking) {
+                        return false;
+                      }
+
                       return true;
                     }).toList();
 
@@ -1047,6 +1120,7 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
                       bool isAnyFilterActive = _searchQuery.isNotEmpty ||
                           _selectedStartDate != null ||
                           _selectedEndDate != null ||
+                          _selectedTransactionType != 'Semua' ||
                           (_selectedClassification != null &&
                               _selectedClassification != 'Semua Klasifikasi');
 
