@@ -1,3 +1,4 @@
+// Path: lib/screens/item_list_screen.dart
 import 'package:flutter/material.dart';
 import 'package:excel/excel.dart';
 import 'package:file_picker/file_picker.dart';
@@ -206,7 +207,8 @@ class _ItemListScreenState extends State<ItemListScreen> {
         TextCellValue('Nama Barang'),
         TextCellValue('Kuantitas/Remarks'),
         TextCellValue('Tanggal Ditambahkan'),
-        TextCellValue('Expiry Date')
+        TextCellValue('Expiry Date'),
+        TextCellValue('Klasifikasi'),
       ]);
       QuerySnapshot snapshot =
           await _firestore.collection('items').orderBy('name').get();
@@ -223,7 +225,8 @@ class _ItemListScreenState extends State<ItemListScreen> {
           TextCellValue(item.name),
           TextCellValue(item.quantityOrRemark.toString()),
           TextCellValue(formattedDate),
-          TextCellValue(formattedExpiryDate)
+          TextCellValue(formattedExpiryDate),
+          TextCellValue(item.classification ?? ''),
         ]);
       }
       if (defaultSheetName != 'Daftar Barang') {
@@ -327,6 +330,7 @@ class _ItemListScreenState extends State<ItemListScreen> {
         final nameIndex = headerRow.indexOf('Nama Barang');
         final quantityOrRemarkIndex = headerRow.indexOf('Kuantitas/Remarks');
         final expiryDateIndex = headerRow.indexOf('Expiry Date');
+        final classificationIndex = headerRow.indexOf('Klasifikasi');
         if (nameIndex == -1 || quantityOrRemarkIndex == -1) {
           _showNotification('Impor Gagal',
               'File Excel tidak memiliki semua kolom yang diperlukan (Nama Barang, Kuantitas/Remarks).',
@@ -357,6 +361,11 @@ class _ItemListScreenState extends State<ItemListScreen> {
           String expiryDateString =
               (row.length > expiryDateIndex && expiryDateIndex != -1
                       ? row[expiryDateIndex]?.value?.toString()
+                      : '') ??
+                  '';
+          String classificationString =
+              (row.length > classificationIndex && classificationIndex != -1
+                      ? row[classificationIndex]?.value?.toString()
                       : '') ??
                   '';
 
@@ -407,6 +416,9 @@ class _ItemListScreenState extends State<ItemListScreen> {
                 quantityOrRemark: quantityOrRemark,
                 createdAt: DateTime.now(),
                 expiryDate: expiryDate,
+                classification: classificationString.isNotEmpty
+                    ? classificationString
+                    : null,
               ).toFirestore());
           importedCount++;
           log('Item imported: $name');
@@ -512,6 +524,286 @@ class _ItemListScreenState extends State<ItemListScreen> {
     } catch (e) {
       log('Error removing item from groups: $e');
     }
+  }
+
+  Future<void> _createOrEditItem({Item? itemToEdit, String? barcode}) async {
+    final TextEditingController _nameController =
+        TextEditingController(text: itemToEdit?.name ?? '');
+    final TextEditingController _quantityController = TextEditingController(
+        text: (itemToEdit?.quantityOrRemark is int)
+            ? itemToEdit!.quantityOrRemark.toString()
+            : '');
+    final TextEditingController _remarksController = TextEditingController(
+        text: (itemToEdit?.quantityOrRemark is String)
+            ? itemToEdit!.quantityOrRemark.toString()
+            : '');
+    final TextEditingController _barcodeController =
+        TextEditingController(text: barcode ?? '');
+    DateTime? _selectedExpiryDate = itemToEdit?.expiryDate;
+    bool isQuantityBased =
+        (itemToEdit?.quantityOrRemark is int) || itemToEdit == null;
+    bool _hasExpiryDate = itemToEdit?.expiryDate != null;
+
+    String? _selectedClassification = itemToEdit?.classification;
+    List<String> _groupNames = [];
+
+    try {
+      final groupsSnapshot = await _firestore.collection('groups').get();
+      _groupNames = groupsSnapshot.docs
+          .map((doc) => doc.data()['name'] as String)
+          .toList();
+      _groupNames.sort();
+    } catch (e) {
+      log('Error fetching group names: $e');
+      if (context.mounted) {
+        _showNotification('Error', 'Gagal memuat daftar grup.', isError: true);
+      }
+    }
+
+    await showDialog(
+      context: context,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return AlertDialog(
+              title:
+                  Text(itemToEdit == null ? 'Tambah Item Baru' : 'Edit Item'),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    TextFormField(
+                      controller: _nameController,
+                      decoration: const InputDecoration(
+                        labelText: 'Nama Barang',
+                        border: OutlineInputBorder(),
+                      ),
+                      readOnly: itemToEdit != null,
+                      validator: (value) {
+                        if (value == null || value.isEmpty) {
+                          return 'Nama barang tidak boleh kosong';
+                        }
+                        return null;
+                      },
+                    ),
+                    const SizedBox(height: 15),
+                    if (_groupNames.isNotEmpty)
+                      DropdownButtonFormField<String>(
+                        value: _selectedClassification,
+                        decoration: const InputDecoration(
+                          labelText: 'Klasifikasi (Grup)',
+                          border: OutlineInputBorder(),
+                        ),
+                        items: [
+                          const DropdownMenuItem<String>(
+                            value: null,
+                            child: Text('Tidak Ada Klasifikasi'),
+                          ),
+                          ..._groupNames
+                              .map((String value) => DropdownMenuItem<String>(
+                                    value: value,
+                                    child: Text(value),
+                                  ))
+                              .toList(),
+                        ],
+                        onChanged: (String? newValue) {
+                          setState(() {
+                            _selectedClassification = newValue;
+                          });
+                        },
+                      )
+                    else
+                      const Text(
+                          'Tidak ada grup yang tersedia. Buat grup terlebih dahulu.'),
+                    const SizedBox(height: 15),
+                    if (isQuantityBased) ...[
+                      TextFormField(
+                        controller: _quantityController,
+                        decoration: const InputDecoration(
+                          labelText: 'Kuantitas Stok Awal',
+                          border: OutlineInputBorder(),
+                        ),
+                        keyboardType: TextInputType.number,
+                        validator: (value) {
+                          if (isQuantityBased &&
+                              (value == null || value.isEmpty)) {
+                            return 'Kuantitas tidak boleh kosong';
+                          }
+                          return null;
+                        },
+                      ),
+                    ] else ...[
+                      TextFormField(
+                        controller: _remarksController,
+                        decoration: const InputDecoration(
+                          labelText: 'Remarks',
+                          hintText: 'Contoh: Baik, Rusak, dll.',
+                          border: OutlineInputBorder(),
+                        ),
+                        maxLines: 3,
+                        validator: (value) {
+                          if (!isQuantityBased &&
+                              (value == null || value.isEmpty)) {
+                            return 'Remarks tidak boleh kosong';
+                          }
+                          return null;
+                        },
+                      ),
+                    ],
+                    const SizedBox(height: 15),
+                    TextFormField(
+                      controller: _barcodeController,
+                      decoration: InputDecoration(
+                        labelText: 'Barcode',
+                        border: const OutlineInputBorder(),
+                        hintText: 'Masukkan barcode (opsional)',
+                        suffixIcon: IconButton(
+                          icon: const Icon(Icons.qr_code_scanner),
+                          onPressed: () {
+                            // Implement barcode scan logic here if needed
+                          },
+                        ),
+                      ),
+                      readOnly: itemToEdit != null,
+                    ),
+                    const SizedBox(height: 15),
+                    Row(
+                      children: [
+                        const Text('Pilih Tanggal Kadaluwarsa'),
+                        const Spacer(),
+                        Switch(
+                          value: _hasExpiryDate,
+                          onChanged: (bool value) {
+                            setState(() {
+                              _hasExpiryDate = value;
+                              if (!value) {
+                                _selectedExpiryDate = null;
+                              }
+                            });
+                          },
+                        ),
+                      ],
+                    ),
+                    if (_hasExpiryDate)
+                      ListTile(
+                        title: Text(
+                          _selectedExpiryDate == null
+                              ? 'Pilih Tanggal'
+                              : 'Kadaluwarsa: ${DateFormat('dd-MM-yyyy').format(_selectedExpiryDate!)}',
+                        ),
+                        trailing: const Icon(Icons.calendar_today),
+                        onTap: () async {
+                          final DateTime? picked = await showDatePicker(
+                            context: context,
+                            initialDate: _selectedExpiryDate ?? DateTime.now(),
+                            firstDate: DateTime(2000),
+                            lastDate: DateTime(2101),
+                          );
+                          if (picked != null && picked != _selectedExpiryDate) {
+                            setState(() {
+                              _selectedExpiryDate = picked;
+                            });
+                          }
+                        },
+                      ),
+                    const SizedBox(height: 15),
+                    Row(
+                      children: [
+                        const Text('Item berbasis kuantitas?'),
+                        const Spacer(),
+                        Switch(
+                          value: isQuantityBased,
+                          onChanged: (bool value) {
+                            setState(() {
+                              isQuantityBased = value;
+                            });
+                          },
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(),
+                  child: const Text('Batal'),
+                ),
+                ElevatedButton(
+                  onPressed: () async {
+                    if (_nameController.text.isEmpty ||
+                        (isQuantityBased && _quantityController.text.isEmpty) ||
+                        (!isQuantityBased && _remarksController.text.isEmpty)) {
+                      _showNotification('Input Tidak Lengkap',
+                          'Pastikan semua bidang yang diperlukan terisi.',
+                          isError: true);
+                      return;
+                    }
+                    if (_hasExpiryDate && _selectedExpiryDate == null) {
+                      _showNotification('Input Tidak Lengkap',
+                          'Tanggal kadaluwarsa harus dipilih jika diaktifkan.',
+                          isError: true);
+                      return;
+                    }
+
+                    try {
+                      final firestore = FirebaseFirestore.instance;
+                      if (itemToEdit == null) {
+                        final newItem = Item(
+                          name: _nameController.text.trim(),
+                          quantityOrRemark: isQuantityBased
+                              ? int.parse(_quantityController.text.trim())
+                              : _remarksController.text.trim(),
+                          createdAt: DateTime.now(),
+                          expiryDate:
+                              _hasExpiryDate ? _selectedExpiryDate : null,
+                          classification: _selectedClassification,
+                        );
+                        await firestore
+                            .collection('items')
+                            .add(newItem.toFirestore());
+
+                        if (dialogContext.mounted) {
+                          Navigator.of(dialogContext).pop();
+                        }
+                        _showNotification('Item Ditambahkan',
+                            'Item "${newItem.name}" berhasil ditambahkan.');
+                      } else {
+                        await firestore
+                            .collection('items')
+                            .doc(itemToEdit.id)
+                            .update({
+                          'quantityOrRemark': isQuantityBased
+                              ? int.parse(_quantityController.text.trim())
+                              : _remarksController.text.trim(),
+                          'expiryDate':
+                              _hasExpiryDate ? _selectedExpiryDate : null,
+                          'classification': _selectedClassification,
+                        });
+
+                        if (dialogContext.mounted) {
+                          Navigator.of(dialogContext).pop();
+                        }
+                        _showNotification('Item Diperbarui',
+                            'Item "${_nameController.text}" berhasil diperbarui.');
+                      }
+                    } catch (e) {
+                      if (dialogContext.mounted) {
+                        Navigator.of(dialogContext).pop();
+                      }
+                      _showNotification('Gagal Menyimpan', 'Error: $e',
+                          isError: true);
+                      log('Error saving item: $e');
+                    }
+                  },
+                  child: Text(itemToEdit == null ? 'Tambah' : 'Simpan'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
   }
 
   @override
@@ -744,11 +1036,14 @@ class _ItemListScreenState extends State<ItemListScreen> {
                 List<Item> filteredItems = allItems.where((item) {
                   final String lowerCaseQuery = _searchQuery.toLowerCase();
                   bool matchesSearch =
-                      item.name.toLowerCase().contains(lowerCaseQuery);
+                      item.name.toLowerCase().contains(lowerCaseQuery) ||
+                          (item.classification
+                                  ?.toLowerCase()
+                                  .contains(lowerCaseQuery) ??
+                              false);
                   if (!matchesSearch) return false;
 
                   if (_isGroupedView) {
-                    // Ignore other filters in grouped view
                     return true;
                   }
 
@@ -834,6 +1129,9 @@ class _ItemListScreenState extends State<ItemListScreen> {
                         ? 'Stok: ${item.quantityOrRemark}'
                         : 'Jenis: Tidak Bisa Dihitung (Remarks: ${item.quantityOrRemark})',
                     style: TextStyle(fontSize: 14, color: textColor)),
+                Text(
+                    'Klasifikasi: ${item.classification ?? 'Tidak Ada Klasifikasi'}',
+                    style: TextStyle(fontSize: 14, color: textColor)),
                 if (item.expiryDate != null)
                   Text(
                       'Expiry Date: ${DateFormat('dd-MM-yyyy').format(item.expiryDate!)}',
@@ -843,6 +1141,7 @@ class _ItemListScreenState extends State<ItemListScreen> {
                           fontWeight: FontWeight.bold)),
               ],
             ),
+            onTap: () => _createOrEditItem(itemToEdit: item, barcode: item.id),
             trailing: IconButton(
               icon: Icon(Icons.delete, color: textColor),
               tooltip: 'Hapus Barang',
@@ -855,49 +1154,17 @@ class _ItemListScreenState extends State<ItemListScreen> {
   }
 
   Widget _buildGroupedList(List<Item> allItems) {
-    return StreamBuilder<QuerySnapshot>(
-      stream: _firestore.collection('groups').snapshots(),
-      builder: (context, groupSnapshot) {
-        if (groupSnapshot.hasError) {
-          return Center(child: Text('Error: ${groupSnapshot.error}'));
-        }
-        if (groupSnapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
-        }
+    // Group items by classification
+    final groupedItems = groupBy(
+      allItems,
+      (Item item) => item.classification ?? 'Tanpa Klasifikasi',
+    );
 
-        final groups = groupSnapshot.data!.docs
-            .map((doc) => Group.fromFirestore(doc))
-            .toList();
-        final allGroupedItemIds = groups.expand((g) => g.itemIds).toSet();
-        final uncategorizedItems = allItems
-            .where((item) => !allGroupedItemIds.contains(item.id))
-            .toList();
-
-        final List<Widget> groupWidgets = [];
-        for (final group in groups) {
-          final itemsInGroup = allItems
-              .where((item) => group.itemIds.contains(item.id))
-              .toList();
-          if (itemsInGroup.isNotEmpty) {
-            groupWidgets
-                .add(_buildGroupExpansionTile(group.name, itemsInGroup));
-          }
-        }
-
-        if (uncategorizedItems.isNotEmpty) {
-          groupWidgets
-              .add(_buildGroupExpansionTile('Tanpa Grup', uncategorizedItems));
-        }
-
-        if (groupWidgets.isEmpty) {
-          return const Center(
-            child: Text('Tidak ada grup atau barang yang dikategorikan.',
-                textAlign: TextAlign.center),
-          );
-        }
-
-        return ListView(children: groupWidgets);
-      },
+    return ListView(
+      children: groupedItems.keys.map((classification) {
+        final itemsInGroup = groupedItems[classification]!;
+        return _buildGroupExpansionTile(classification, itemsInGroup);
+      }).toList(),
     );
   }
 
@@ -918,12 +1185,21 @@ class _ItemListScreenState extends State<ItemListScreen> {
             title: Text(item.name,
                 style:
                     TextStyle(fontWeight: FontWeight.bold, color: textColor)),
-            subtitle: Text(
-              '${item.quantityOrRemark is int ? 'Stok: ${item.quantityOrRemark}' : 'Jenis: Tidak Bisa Dihitung'}',
-              style: TextStyle(color: textColor),
-            ),
+            subtitle:
+                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(
+                '${item.quantityOrRemark is int ? 'Stok: ${item.quantityOrRemark}' : 'Jenis: Tidak Bisa Dihitung'}',
+                style: TextStyle(color: textColor),
+              ),
+              Text(
+                'Klasifikasi: ${item.classification ?? 'Tidak Ada Klasifikasi'}',
+                style: TextStyle(fontSize: 14, color: textColor),
+              ),
+            ]),
+            onTap: () => _createOrEditItem(itemToEdit: item, barcode: item.id),
             trailing: IconButton(
               icon: Icon(Icons.delete, color: textColor),
+              tooltip: 'Hapus Barang',
               onPressed: () => _deleteItem(context, item.id!),
             ),
           );
