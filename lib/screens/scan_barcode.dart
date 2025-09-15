@@ -671,6 +671,8 @@ class _ScanBarcodeScreenState extends State<ScanBarcodeScreen> {
       }
     }
 
+    String? itemClassification = item.classification;
+
     LogEntry newLog = LogEntry(
       itemName: item.name,
       quantityOrRemark: quantityOrRemark,
@@ -679,6 +681,7 @@ class _ScanBarcodeScreenState extends State<ScanBarcodeScreen> {
       staffDepartment: staffDepartment,
       remarks: remarks,
       remainingStock: remainingStock,
+      itemClassification: itemClassification,
     );
 
     try {

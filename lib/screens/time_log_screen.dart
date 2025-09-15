@@ -1,3 +1,4 @@
+// Path: lib/screens/time_log_screen.dart
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:strata_lite/models/log_entry.dart';
@@ -35,10 +36,10 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
   DateTime? _selectedEndDate;
   TimeOfDay? _selectedStartTime;
   TimeOfDay? _selectedEndTime;
-  String? _selectedDepartment;
+  String? _selectedClassification;
 
-  List<String> _dynamicDepartments = ['Semua Departemen'];
-  bool _isDepartmentsLoading = true;
+  List<String> _dynamicClassifications = ['Semua Klasifikasi'];
+  bool _isClassificationsLoading = true;
 
   final GlobalKey _filterSectionKey = GlobalKey();
   double _filterSectionHeight = 0;
@@ -47,7 +48,7 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
   void initState() {
     super.initState();
     _searchController.addListener(_onSearchChanged);
-    _loadDepartments();
+    _loadClassifications();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _measureFilterSectionHeight();
     });
@@ -125,41 +126,41 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
     });
   }
 
-  Future<void> _loadDepartments() async {
+  Future<void> _loadClassifications() async {
     setState(() {
-      _isDepartmentsLoading = true;
+      _isClassificationsLoading = true;
     });
     try {
-      QuerySnapshot usersSnapshot = await _firestore.collection('users').get();
-      Set<String> uniqueDepartments = {};
+      QuerySnapshot itemsSnapshot = await _firestore.collection('items').get();
+      Set<String> uniqueClassifications = {};
 
-      for (var doc in usersSnapshot.docs) {
+      for (var doc in itemsSnapshot.docs) {
         final data = doc.data() as Map<String, dynamic>;
-        final department = data['department'] as String?;
-        if (department != null && department.isNotEmpty) {
-          uniqueDepartments.add(department);
+        final classification = data['classification'] as String?;
+        if (classification != null && classification.isNotEmpty) {
+          uniqueClassifications.add(classification);
         }
       }
 
       setState(() {
-        _dynamicDepartments = [
-          'Semua Departemen',
-          ...uniqueDepartments.toList()..sort()
+        _dynamicClassifications = [
+          'Semua Klasifikasi',
+          ...uniqueClassifications.toList()..sort()
         ];
-        _selectedDepartment ??= _dynamicDepartments.first;
-        _isDepartmentsLoading = false;
+        _selectedClassification ??= _dynamicClassifications.first;
+        _isClassificationsLoading = false;
       });
-      log('Dynamic departments loaded: $_dynamicDepartments');
+      log('Dynamic classifications loaded: $_dynamicClassifications');
     } catch (e) {
-      log('Error loading departments: $e');
+      log('Error loading classifications: $e');
       setState(() {
-        _dynamicDepartments = ['Semua Departemen'];
-        _selectedDepartment = _dynamicDepartments.first;
-        _isDepartmentsLoading = false;
+        _dynamicClassifications = ['Semua Klasifikasi'];
+        _selectedClassification = _dynamicClassifications.first;
+        _isClassificationsLoading = false;
       });
       _showNotification(
         'Error',
-        'Gagal memuat daftar departemen.',
+        'Gagal memuat daftar klasifikasi.',
         isError: true,
       );
     }
@@ -216,7 +217,7 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
       _selectedEndDate = null;
       _selectedStartTime = null;
       _selectedEndTime = null;
-      _selectedDepartment = 'Semua Departemen';
+      _selectedClassification = 'Semua Klasifikasi';
     });
     _showNotification('Filter Direset', 'Semua filter telah dihapus.');
   }
@@ -344,14 +345,15 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
       }
 
       sheetObject.appendRow([
-        TextCellValue('Tipe Log'), // Added
+        TextCellValue('Tipe Log'),
         TextCellValue('Nama Barang'),
+        TextCellValue('Klasifikasi'),
         TextCellValue('Kuantitas/Remarks'),
         TextCellValue('Tanggal & Waktu'),
         TextCellValue('Nama Staff'),
         TextCellValue('Departemen'),
-        TextCellValue('Remarks Tambahan'), // Changed
-        TextCellValue('Sisa Stok'), // Added
+        TextCellValue('Remarks Tambahan'),
+        TextCellValue('Sisa Stok'),
       ]);
 
       QuerySnapshot snapshot = await _firestore
@@ -371,6 +373,10 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
                 .contains(lowerCaseQuery) ||
             logEntry.staffName.toLowerCase().contains(lowerCaseQuery) ||
             logEntry.staffDepartment.toLowerCase().contains(lowerCaseQuery) ||
+            (logEntry.itemClassification
+                    ?.toLowerCase()
+                    .contains(lowerCaseQuery) ??
+                false) ||
             (logEntry.remarks?.toLowerCase().contains(lowerCaseQuery) ?? false);
 
         if (!matchesSearch) return false;
@@ -412,9 +418,10 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
           if (logDate.isAfter(endDate)) return false;
         }
 
-        if (_selectedDepartment != null &&
-            _selectedDepartment != 'Semua Departemen') {
-          if (logEntry.staffDepartment != _selectedDepartment) return false;
+        if (_selectedClassification != null &&
+            _selectedClassification != 'Semua Klasifikasi') {
+          if (logEntry.itemClassification != _selectedClassification)
+            return false;
         }
 
         return true;
@@ -429,21 +436,21 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
             '${logEntry.timestamp.minute.toString().padLeft(2, '0')}:'
             '${logEntry.timestamp.second.toString().padLeft(2, '0')}';
 
-        // Check if quantityOrRemark is int and is positive
         String logType =
             (logEntry.quantityOrRemark is int && logEntry.quantityOrRemark > 0)
                 ? 'Penambahan'
                 : 'Pengambilan';
 
         sheetObject.appendRow([
-          TextCellValue(logType), // Added
+          TextCellValue(logType),
           TextCellValue(logEntry.itemName),
+          TextCellValue(logEntry.itemClassification ?? ''),
           TextCellValue(logEntry.quantityOrRemark.toString()),
           TextCellValue(formattedDateTime),
           TextCellValue(logEntry.staffName),
           TextCellValue(logEntry.staffDepartment),
           TextCellValue(logEntry.remarks ?? ''),
-          TextCellValue(logEntry.remainingStock?.toString() ?? '-'), // Added
+          TextCellValue(logEntry.remainingStock?.toString() ?? '-'),
         ]);
       }
 
@@ -460,7 +467,6 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
         if (defaultTargetPlatform == TargetPlatform.windows ||
             defaultTargetPlatform == TargetPlatform.macOS ||
             defaultTargetPlatform == TargetPlatform.linux) {
-          // Logic for desktop platforms
           final String? resultPath = await FilePicker.platform.saveFile(
             fileName: fileName,
             type: FileType.custom,
@@ -482,7 +488,6 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
                 isError: true);
           }
         } else {
-          // Logic for mobile platforms (Android & iOS)
           final directory = await getApplicationDocumentsDirectory();
           final filePath = '${directory.path}/$fileName';
           final file = File(filePath);
@@ -616,9 +621,10 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
       query = query.where('timestamp', isLessThanOrEqualTo: endOfDay);
     }
 
-    if (_selectedDepartment != null &&
-        _selectedDepartment != 'Semua Departemen') {
-      query = query.where('staffDepartment', isEqualTo: _selectedDepartment);
+    if (_selectedClassification != null &&
+        _selectedClassification != 'Semua Klasifikasi') {
+      query =
+          query.where('itemClassification', isEqualTo: _selectedClassification);
     }
 
     query = query.orderBy('timestamp', descending: true);
@@ -667,7 +673,7 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
                               controller: _searchController,
                               decoration: InputDecoration(
                                 hintText:
-                                    'Cari log (nama barang, staff, departemen)...',
+                                    'Cari log (nama barang, staff, departemen, klasifikasi)...',
                                 prefixIcon: const Icon(Icons.search),
                                 border: OutlineInputBorder(
                                   borderRadius: BorderRadius.circular(8.0),
@@ -800,24 +806,24 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
                               ],
                             ),
                             const SizedBox(height: 15),
-                            const Text('Filter Departemen:',
+                            const Text('Filter Klasifikasi:',
                                 style: TextStyle(
                                     fontWeight: FontWeight.bold, fontSize: 16)),
                             const SizedBox(height: 10),
                             DropdownButtonFormField<String>(
-                              value: _selectedDepartment ??
-                                  _dynamicDepartments.first,
+                              value: _selectedClassification ??
+                                  _dynamicClassifications.first,
                               decoration: InputDecoration(
-                                labelText: 'Pilih Departemen',
+                                labelText: 'Pilih Klasifikasi',
                                 border: const OutlineInputBorder(),
-                                prefixIcon: const Icon(Icons.business),
+                                prefixIcon: const Icon(Icons.category),
                                 contentPadding: const EdgeInsets.symmetric(
                                     horizontal: 10, vertical: 12),
                                 enabledBorder: OutlineInputBorder(
                                   borderRadius: BorderRadius.circular(8),
                                   borderSide: BorderSide(
-                                      color: _selectedDepartment !=
-                                              'Semua Departemen'
+                                      color: _selectedClassification !=
+                                              'Semua Klasifikasi'
                                           ? Colors.blue[700]!
                                           : Colors.grey[400]!),
                                 ),
@@ -827,25 +833,25 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
                                       color: Colors.blue[700]!, width: 2),
                                 ),
                               ),
-                              items:
-                                  _dynamicDepartments.map((String department) {
+                              items: _dynamicClassifications
+                                  .map((String classification) {
                                 return DropdownMenuItem<String>(
-                                  value: department,
-                                  child: Text(department),
+                                  value: classification,
+                                  child: Text(classification),
                                 );
                               }).toList(),
-                              onChanged: _isDepartmentsLoading
+                              onChanged: _isClassificationsLoading
                                   ? null
                                   : (String? newValue) {
                                       setState(() {
-                                        _selectedDepartment =
-                                            newValue == 'Semua Departemen'
+                                        _selectedClassification =
+                                            newValue == 'Semua Klasifikasi'
                                                 ? null
                                                 : newValue;
                                       });
                                     },
                             ),
-                            if (_isDepartmentsLoading)
+                            if (_isClassificationsLoading)
                               const Padding(
                                 padding: EdgeInsets.only(top: 8.0),
                                 child: LinearProgressIndicator(),
@@ -978,6 +984,10 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
                           logEntry.staffDepartment
                               .toLowerCase()
                               .contains(lowerCaseQuery) ||
+                          (logEntry.itemClassification
+                                  ?.toLowerCase()
+                                  .contains(lowerCaseQuery) ??
+                              false) ||
                           (logEntry.remarks
                                   ?.toLowerCase()
                                   .contains(lowerCaseQuery) ??
@@ -1024,10 +1034,10 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
                         if (logDate.isAfter(endDate)) return false;
                       }
 
-                      if (_selectedDepartment != null &&
-                          _selectedDepartment != 'Semua Departemen') {
-                        if (logEntry.staffDepartment != _selectedDepartment)
-                          return false;
+                      if (_selectedClassification != null &&
+                          _selectedClassification != 'Semua Klasifikasi') {
+                        if (logEntry.itemClassification !=
+                            _selectedClassification) return false;
                       }
 
                       return true;
@@ -1037,8 +1047,8 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
                       bool isAnyFilterActive = _searchQuery.isNotEmpty ||
                           _selectedStartDate != null ||
                           _selectedEndDate != null ||
-                          (_selectedDepartment != null &&
-                              _selectedDepartment != 'Semua Departemen');
+                          (_selectedClassification != null &&
+                              _selectedClassification != 'Semua Klasifikasi');
 
                       if (isAnyFilterActive) {
                         return const Center(
@@ -1083,7 +1093,6 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
                           quantityText = logEntry.quantityOrRemark.toString();
                         }
 
-                        // Calculate stock before the action
                         String stockTextBefore = 'N/A';
                         if (logEntry.remainingStock != null &&
                             logEntry.quantityOrRemark is int) {
@@ -1104,6 +1113,12 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
                           stockTextAfter = 'Tidak Bisa Dihitung';
                           stockColor = Colors.blueGrey;
                         }
+
+                        String classificationText =
+                            logEntry.itemClassification != null &&
+                                    logEntry.itemClassification!.isNotEmpty
+                                ? logEntry.itemClassification!
+                                : 'Tidak Ada Klasifikasi';
 
                         return Card(
                           margin: const EdgeInsets.symmetric(
@@ -1146,9 +1161,13 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
                                 const SizedBox(height: 10),
                                 Row(
                                   children: [
-                                    const Icon(Icons.qr_code_scanner,
+                                    const Icon(Icons.category,
                                         size: 20, color: Colors.blueGrey),
                                     const SizedBox(width: 10),
+                                    Text('Klasifikasi: $classificationText',
+                                        style: TextStyle(
+                                            fontSize: 16,
+                                            color: Colors.blueGrey[700])),
                                   ],
                                 ),
                                 const SizedBox(height: 6),

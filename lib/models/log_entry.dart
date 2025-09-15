@@ -9,7 +9,8 @@ class LogEntry {
   final String staffName;
   final String staffDepartment;
   final String? remarks;
-  final int? remainingStock; // Properti baru
+  final int? remainingStock;
+  final String? itemClassification;
 
   LogEntry({
     this.id,
@@ -19,7 +20,8 @@ class LogEntry {
     required this.staffName,
     required this.staffDepartment,
     this.remarks,
-    this.remainingStock, // Perbarui constructor
+    this.remainingStock,
+    this.itemClassification,
   });
 
   factory LogEntry.fromFirestore(
@@ -32,7 +34,8 @@ class LogEntry {
       staffName: firestoreData['staffName'] ?? '',
       staffDepartment: firestoreData['staffDepartment'] ?? '',
       remarks: firestoreData['remarks'],
-      remainingStock: firestoreData['remainingStock'] as int?, // Ambil nilai
+      remainingStock: firestoreData['remainingStock'] as int?,
+      itemClassification: firestoreData['itemClassification'] as String?,
     );
   }
 
@@ -44,7 +47,8 @@ class LogEntry {
       'staffName': staffName,
       'staffDepartment': staffDepartment,
       'remarks': remarks,
-      'remainingStock': remainingStock, // Simpan nilai
+      'remainingStock': remainingStock,
+      'itemClassification': itemClassification,
     };
   }
 }
