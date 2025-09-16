@@ -899,7 +899,7 @@ class _ScanBarcodeScreenState extends State<ScanBarcodeScreen> {
                           ] else if (!_isLoading)
                             const Center(
                               child: Text(
-                                'Pindai barcode atau QR code untuk memproses barang.',
+                                'Pindai QR code untuk memproses barang.',
                                 textAlign: TextAlign.center,
                               ),
                             ),
