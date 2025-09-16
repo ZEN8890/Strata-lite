@@ -204,18 +204,18 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
               },
             ),
             ListTile(
-              leading: const Icon(Icons.history),
-              title: const Text('Log Pengambilan Barang'),
-              onTap: () {
-                _onItemTapped(1);
-                Navigator.pop(context);
-              },
-            ),
-            ListTile(
               leading: const Icon(Icons.shopping_cart),
               title: const Text('Ambil/tambah Barang'),
               onTap: () {
                 _onItemTapped(2);
+                Navigator.pop(context);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.history),
+              title: const Text('Log Pengambilan Barang'),
+              onTap: () {
+                _onItemTapped(1);
                 Navigator.pop(context);
               },
             ),
