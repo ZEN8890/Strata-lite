@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:strata_lite/screens/scan_barcode.dart'; // Import halaman Ambil Barang
-import 'package:strata_lite/screens/settings_screen.dart'; // Import halaman Pengaturan
+import 'package:QR_Aid/screens/scan_barcode.dart'; // Import halaman Ambil Barang
+import 'package:QR_Aid/screens/settings_screen.dart'; // Import halaman Pengaturan
 import 'dart:developer'; // Untuk log.log()
 
 class StaffDashboardScreen extends StatefulWidget {
@@ -136,8 +136,7 @@ class _StaffDashboardScreenState extends State<StaffDashboardScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text(
-            'Dashboard Staff Strata Lite'), // Judul AppBar untuk staff
+        title: const Text('Dashboard Staff QR Aid'), // Judul AppBar untuk staff
         // Bagian 'actions' dihilangkan untuk menghapus ikon logout
       ),
       drawer: Drawer(

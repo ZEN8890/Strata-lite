@@ -1,8 +1,8 @@
 // Path: lib/screens/time_log_screen.dart
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:strata_lite/models/log_entry.dart';
-import 'package:strata_lite/models/item.dart';
+import 'package:QR_Aid/models/log_entry.dart';
+import 'package:QR_Aid/models/item.dart';
 import 'dart:developer';
 import 'package:intl/intl.dart';
 import 'dart:async';

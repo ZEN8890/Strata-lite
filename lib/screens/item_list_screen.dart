@@ -6,8 +6,8 @@ import 'package:path_provider/path_provider.dart';
 import 'dart:io';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:strata_lite/models/item.dart';
-import 'package:strata_lite/models/group.dart';
+import 'package:QR_Aid/models/item.dart';
+import 'package:QR_Aid/models/group.dart';
 import 'dart:developer';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/foundation.dart';
@@ -16,7 +16,7 @@ import 'dart:async';
 import 'package:intl/intl.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:collection/collection.dart';
-import 'package:strata_lite/screens/group_management_dialog.dart';
+import 'package:QR_Aid/screens/group_management_dialog.dart';
 
 class ItemListScreen extends StatefulWidget {
   const ItemListScreen({super.key});

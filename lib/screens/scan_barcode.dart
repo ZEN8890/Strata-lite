@@ -5,9 +5,9 @@ import 'dart:async';
 import 'dart:developer';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:strata_lite/models/item.dart';
-import 'package:strata_lite/models/log_entry.dart';
-import 'package:strata_lite/models/group.dart';
+import 'package:QR_Aid/models/item.dart';
+import 'package:QR_Aid/models/log_entry.dart';
+import 'package:QR_Aid/models/group.dart';
 import 'package:another_flushbar/flushbar.dart';
 import 'package:audioplayers/audioplayers.dart';
 

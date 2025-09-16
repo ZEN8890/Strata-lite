@@ -202,7 +202,7 @@ class _LoginScreenState extends State<LoginScreen> {
               mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Image.asset('assets/Strata_logo.png', height: 120),
+                Image.asset('assets/QR_logo.png', height: 120),
                 const SizedBox(height: 48.0),
                 TextFormField(
                   controller: _usernameController,

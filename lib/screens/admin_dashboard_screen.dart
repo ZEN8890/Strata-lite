@@ -1,17 +1,17 @@
 // Path: lib/screens/admin_dashboard_screen.dart
 import 'package:flutter/material.dart';
-import 'package:strata_lite/screens/item_list_screen.dart';
-import 'package:strata_lite/screens/time_log_screen.dart';
-import 'package:strata_lite/screens/scan_barcode.dart';
-import 'package:strata_lite/screens/settings_screen.dart';
-import 'package:strata_lite/screens/users_screen.dart';
+import 'package:QR_Aid/screens/item_list_screen.dart';
+import 'package:QR_Aid/screens/time_log_screen.dart';
+import 'package:QR_Aid/screens/scan_barcode.dart';
+import 'package:QR_Aid/screens/settings_screen.dart';
+import 'package:QR_Aid/screens/users_screen.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'dart:developer';
 import 'dart:async';
-import 'package:strata_lite/screens/login_screen.dart';
+import 'package:QR_Aid/screens/login_screen.dart';
 // Impor file baru
-import 'package:strata_lite/screens/group_management_dialog.dart';
+import 'package:QR_Aid/screens/group_management_dialog.dart';
 
 class AdminDashboardScreen extends StatefulWidget {
   const AdminDashboardScreen({super.key});
@@ -146,7 +146,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Dashboard Admin Strata Lite'),
+        title: const Text('Dashboard Admin QR Aid'),
       ),
       drawer: Drawer(
         child: ListView(
