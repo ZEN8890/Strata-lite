@@ -251,6 +251,99 @@ class _GroupManagementDialogState extends State<GroupManagementDialog> {
     );
   }
 
+  // --- Fungsionalitas baru untuk mengedit item dalam grup ---
+  Future<void> _editGroupItems(
+      String classification, List<Item> itemsInGroup) async {
+    final List<String> currentItemIds =
+        itemsInGroup.map((item) => item.id!).toList();
+    Set<String> selectedItemIds = Set<String>.from(currentItemIds);
+
+    QuerySnapshot allItemsSnapshot =
+        await _firestore.collection('items').orderBy('name').get();
+    List<Item> allItems = allItemsSnapshot.docs
+        .map((doc) =>
+            Item.fromFirestore(doc.data() as Map<String, dynamic>, doc.id))
+        .toList();
+
+    showDialog(
+      context: context,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return AlertDialog(
+              title: Text('Edit Item di Grup "$classification"'),
+              content: SizedBox(
+                width: double.maxFinite,
+                child: ListView.builder(
+                  shrinkWrap: true,
+                  itemCount: allItems.length,
+                  itemBuilder: (context, index) {
+                    final item = allItems[index];
+                    final isSelected = selectedItemIds.contains(item.id);
+                    return CheckboxListTile(
+                      title: Text(item.name),
+                      subtitle: Text('Stok: ${item.quantityOrRemark}'),
+                      value: isSelected,
+                      onChanged: (bool? newValue) {
+                        setState(() {
+                          if (newValue == true) {
+                            selectedItemIds.add(item.id!);
+                          } else {
+                            selectedItemIds.remove(item.id!);
+                          }
+                        });
+                      },
+                    );
+                  },
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(),
+                  child: const Text('Batal'),
+                ),
+                ElevatedButton(
+                  onPressed: () async {
+                    try {
+                      QuerySnapshot groupsSnapshot = await _firestore
+                          .collection('groups')
+                          .where('name', isEqualTo: classification)
+                          .limit(1)
+                          .get();
+
+                      if (groupsSnapshot.docs.isEmpty) {
+                        await _firestore.collection('groups').add({
+                          'name': classification,
+                          'itemIds': selectedItemIds.toList(),
+                        });
+                      } else {
+                        await groupsSnapshot.docs.first.reference.update({
+                          'itemIds': selectedItemIds.toList(),
+                        });
+                      }
+
+                      Navigator.of(dialogContext).pop();
+                      _showNotification('Berhasil',
+                          'Item di grup "$classification" berhasil diperbarui.');
+                    } catch (e) {
+                      log('Error updating group items: $e');
+                      if (!mounted) return;
+                      _showNotification('Gagal',
+                          'Gagal memperbarui item grup. Silakan coba lagi.',
+                          isError: true);
+                    }
+                  },
+                  child: const Text('Simpan'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+  // --- Akhir fungsionalitas baru ---
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -287,9 +380,10 @@ class _GroupManagementDialogState extends State<GroupManagementDialog> {
             itemCount: uniqueClassifications.length,
             itemBuilder: (context, index) {
               final classification = uniqueClassifications[index];
-              final itemsInGroupCount = allItems
+              final itemsInGroup = allItems
                   .where((item) => item.classification == classification)
-                  .length;
+                  .toList();
+              final itemsInGroupCount = itemsInGroup.length;
 
               return Card(
                 margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -300,6 +394,13 @@ class _GroupManagementDialogState extends State<GroupManagementDialog> {
                   trailing: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
+                      // Tombol baru untuk mengedit item dalam grup
+                      IconButton(
+                        icon: const Icon(Icons.edit_note, color: Colors.green),
+                        onPressed: () =>
+                            _editGroupItems(classification, itemsInGroup),
+                        tooltip: 'Edit Item Grup',
+                      ),
                       IconButton(
                         icon: const Icon(Icons.qr_code, color: Colors.purple),
                         onPressed: () =>

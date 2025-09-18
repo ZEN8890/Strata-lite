@@ -36,6 +36,7 @@ class _ItemListScreenState extends State<ItemListScreen> {
   Timer? _notificationTimer;
   bool _isLoadingExport = false;
   bool _isLoadingImport = false;
+  bool _isLoadingQuantityImport = false; // Add new loading state
   bool _isGroupedView = false;
 
   @override
@@ -315,7 +316,6 @@ class _ItemListScreenState extends State<ItemListScreen> {
         var bytes = file.readAsBytesSync();
         var excel = Excel.decodeBytes(bytes);
         int importedCount = 0;
-        int updatedCount = 0;
         List<String> failedItems = [];
         String? sheetName = excel.tables.keys.firstWhere(
           (key) => key == 'Daftar Barang',
@@ -370,13 +370,13 @@ class _ItemListScreenState extends State<ItemListScreen> {
                   '';
 
           if (name.isEmpty) {
-            log('Skipping row $i: Nama Barang kosong.');
+            log('Skipping row ${i + 1}: Nama Barang kosong.');
             failedItems.add('Baris ${i + 1}: Nama Barang kosong.');
             continue;
           }
 
           if (existingItemNames.contains(name)) {
-            log('Skipping row $i: Item dengan nama "$name" sudah ada.');
+            log('Skipping row ${i + 1}: Item dengan nama "$name" sudah ada.');
             failedItems.add('"$name" (sudah ada)');
             continue;
           }
@@ -385,14 +385,14 @@ class _ItemListScreenState extends State<ItemListScreen> {
           if (int.tryParse(quantityOrRemarkString) != null) {
             quantityOrRemark = int.parse(quantityOrRemarkString);
             if (quantityOrRemark < 0) {
-              log('Skipping row $i: Kuantitas harus angka positif.');
+              log('Skipping row ${i + 1}: Kuantitas harus angka positif.');
               failedItems.add('"$name" (kuantitas negatif)');
               continue;
             }
           } else {
             quantityOrRemark = quantityOrRemarkString;
             if (quantityOrRemark.isEmpty) {
-              log('Skipping row $i: Remarks tidak boleh kosong.');
+              log('Skipping row ${i + 1}: Remarks tidak boleh kosong.');
               failedItems.add('"$name" (remarks kosong)');
               continue;
             }
@@ -403,7 +403,7 @@ class _ItemListScreenState extends State<ItemListScreen> {
             try {
               expiryDate = DateFormat('dd-MM-yyyy').parse(expiryDateString);
             } catch (e) {
-              log('Skipping row $i: Format Expiry Date tidak valid. Format yang diharapkan: dd-MM-yyyy. Error: $e');
+              log('Skipping row ${i + 1}: Format Expiry Date tidak valid. Error: $e');
               failedItems.add('"$name" (format expiry date tidak valid)');
               continue;
             }
@@ -463,6 +463,165 @@ class _ItemListScreenState extends State<ItemListScreen> {
     } finally {
       setState(() {
         _isLoadingImport = false;
+      });
+    }
+  }
+
+  // New function to import quantity
+  Future<void> _importQuantityFromExcel(BuildContext context) async {
+    setState(() {
+      _isLoadingQuantityImport = true;
+    });
+
+    bool hasPermission = await _requestStoragePermission(context);
+    if (!hasPermission) {
+      setState(() {
+        _isLoadingQuantityImport = false;
+      });
+      return;
+    }
+
+    try {
+      FilePickerResult? result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['xlsx', 'xls'],
+      );
+
+      if (!context.mounted) {
+        setState(() {
+          _isLoadingQuantityImport = false;
+        });
+        return;
+      }
+
+      if (result != null && result.files.single.path != null) {
+        File file = File(result.files.single.path!);
+        var bytes = file.readAsBytesSync();
+        var excel = Excel.decodeBytes(bytes);
+        int updatedCount = 0;
+        List<String> failedUpdates = [];
+
+        String? sheetName = excel.tables.keys.firstWhere(
+          (key) => key == 'Daftar Barang',
+          orElse: () => excel.tables.keys.first,
+        );
+        Sheet table = excel.tables[sheetName]!;
+
+        final headerRow = table.rows.isNotEmpty
+            ? table.rows[0]
+                .map((cell) => cell?.value?.toString().trim())
+                .toList()
+            : [];
+        final nameIndex = headerRow.indexOf('Nama Barang');
+        final quantityOrRemarkIndex = headerRow.indexOf('Kuantitas/Remarks');
+        if (nameIndex == -1 || quantityOrRemarkIndex == -1) {
+          _showNotification('Impor Gagal',
+              'File Excel harus memiliki kolom "Nama Barang" dan "Kuantitas/Remarks".',
+              isError: true);
+          setState(() {
+            _isLoadingQuantityImport = false;
+          });
+          return;
+        }
+
+        WriteBatch batch = _firestore.batch();
+
+        final existingItemsSnapshot =
+            await _firestore.collection('items').get();
+        final Map<String, String> itemNameToIdMap = Map.fromIterable(
+            existingItemsSnapshot.docs,
+            key: (doc) =>
+                (doc.data() as Map<String, dynamic>)['name'] as String,
+            value: (doc) => doc.id);
+
+        for (int i = 1; i < table.rows.length; i++) {
+          var row = table.rows[i];
+          String name = (row.length > nameIndex
+                  ? row[nameIndex]?.value?.toString()
+                  : '') ??
+              '';
+          String quantityString = (row.length > quantityOrRemarkIndex
+                  ? row[quantityOrRemarkIndex]?.value?.toString()
+                  : '') ??
+              '';
+
+          if (name.isEmpty) {
+            continue; // Skip empty rows
+          }
+
+          if (!itemNameToIdMap.containsKey(name)) {
+            failedUpdates.add('"$name" (tidak ditemukan)');
+            continue;
+          }
+
+          final itemId = itemNameToIdMap[name];
+          final currentItem =
+              existingItemsSnapshot.docs.firstWhere((doc) => doc.id == itemId);
+          final isQuantityBased = (currentItem.data()
+              as Map<String, dynamic>)['quantityOrRemark'] is int;
+
+          if (isQuantityBased) {
+            int? newQuantity = int.tryParse(quantityString);
+            if (newQuantity == null) {
+              failedUpdates.add('"$name" (kuantitas tidak valid)');
+              continue;
+            }
+            if (newQuantity < 0) {
+              failedUpdates.add('"$name" (kuantitas negatif)');
+              continue;
+            }
+            batch.update(_firestore.collection('items').doc(itemId),
+                {'quantityOrRemark': newQuantity});
+            updatedCount++;
+          } else {
+            // For non-quantity items, skip this process
+            failedUpdates.add('"$name" (bukan item berbasis kuantitas)');
+            continue;
+          }
+        }
+
+        if (updatedCount > 0) {
+          await batch.commit();
+        }
+
+        if (!context.mounted) {
+          setState(() {
+            _isLoadingQuantityImport = false;
+          });
+          return;
+        }
+
+        String importSummaryMessage = '';
+        if (updatedCount > 0) {
+          importSummaryMessage += '$updatedCount item berhasil diperbarui.';
+        }
+
+        if (failedUpdates.isNotEmpty) {
+          if (updatedCount > 0) importSummaryMessage += '\n';
+          importSummaryMessage +=
+              '${failedUpdates.length} item gagal diperbarui. Detail: ${failedUpdates.join(', ')}';
+        }
+
+        if (updatedCount == 0 && failedUpdates.isEmpty) {
+          importSummaryMessage =
+              'Tidak ada item berbasis kuantitas yang dapat diperbarui dari file Excel.';
+        }
+
+        _showNotification('Impor Kuantitas Selesai!', importSummaryMessage,
+            isError: failedUpdates.isNotEmpty);
+        log('Ringkasan Impor Kuantitas: $importSummaryMessage');
+      } else {
+        _showNotification('Impor Dibatalkan', 'Pemilihan file dibatalkan.',
+            isError: true);
+      }
+    } catch (e) {
+      if (!context.mounted) return;
+      _showNotification('Impor Gagal', 'Error saat impor kuantitas: $e',
+          isError: true);
+      log('Error saat impor kuantitas: $e');
+    } finally {
+      setState(() {
+        _isLoadingQuantityImport = false;
       });
     }
   }
@@ -909,6 +1068,31 @@ class _ItemListScreenState extends State<ItemListScreen> {
                                 : 'Impor Excel'),
                             style: ElevatedButton.styleFrom(
                                 backgroundColor: Colors.indigo,
+                                foregroundColor: Colors.white,
+                                shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(8)),
+                                padding:
+                                    const EdgeInsets.symmetric(vertical: 12)),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: ElevatedButton.icon(
+                            onPressed: _isLoadingQuantityImport
+                                ? null
+                                : () => _importQuantityFromExcel(context),
+                            icon: _isLoadingQuantityImport
+                                ? const SizedBox(
+                                    width: 20,
+                                    height: 20,
+                                    child: CircularProgressIndicator(
+                                        color: Colors.blue, strokeWidth: 2))
+                                : const Icon(Icons.add_shopping_cart),
+                            label: Text(_isLoadingQuantityImport
+                                ? 'Mengimpor...'
+                                : 'Impor Kuantitas'),
+                            style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.blue,
                                 foregroundColor: Colors.white,
                                 shape: RoundedRectangleBorder(
                                     borderRadius: BorderRadius.circular(8)),
