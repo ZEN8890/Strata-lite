@@ -48,15 +48,17 @@ class _GroupManagementDialogState extends State<GroupManagementDialog> {
     ).show(context);
   }
 
-  Future<void> _createOrEditGroup({Group? group}) async {
-    final nameController = TextEditingController(text: group?.name);
+  Future<void> _editItemClassification(String oldClassification) async {
+    final newClassificationController =
+        TextEditingController(text: oldClassification);
+
     bool? confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: Text(group == null ? 'Buat Grup Baru' : 'Edit Nama Grup'),
+        title: Text('Edit Nama Klasifikasi'),
         content: TextField(
-          controller: nameController,
-          decoration: const InputDecoration(labelText: 'Nama Grup'),
+          controller: newClassificationController,
+          decoration: const InputDecoration(labelText: 'Nama Klasifikasi Baru'),
         ),
         actions: [
           TextButton(
@@ -65,7 +67,7 @@ class _GroupManagementDialogState extends State<GroupManagementDialog> {
           ),
           ElevatedButton(
             onPressed: () {
-              if (nameController.text.isNotEmpty) {
+              if (newClassificationController.text.isNotEmpty) {
                 Navigator.of(dialogContext).pop(true);
               }
             },
@@ -77,40 +79,37 @@ class _GroupManagementDialogState extends State<GroupManagementDialog> {
 
     if (confirmed == true) {
       try {
-        if (group == null) {
-          final docRef = await _firestore.collection('groups').add({
-            'name': nameController.text.trim(),
-            'itemIds': [],
-          });
-          final newGroup =
-              Group(id: docRef.id, name: nameController.text.trim());
-          _showNotification(
-              'Berhasil', 'Grup "${newGroup.name}" berhasil dibuat.');
-          if (mounted) {
-            _showQrCodeForGroup(newGroup);
-          }
-        } else {
-          await _firestore.collection('groups').doc(group.id).update({
-            'name': nameController.text.trim(),
-          });
-          _showNotification('Berhasil', 'Grup berhasil diperbarui.');
+        final newClassificationName = newClassificationController.text.trim();
+        QuerySnapshot snapshot = await _firestore
+            .collection('items')
+            .where('classification', isEqualTo: oldClassification)
+            .get();
+
+        WriteBatch batch = _firestore.batch();
+        for (var doc in snapshot.docs) {
+          batch
+              .update(doc.reference, {'classification': newClassificationName});
         }
+        await batch.commit();
+
+        _showNotification('Berhasil',
+            'Klasifikasi "$oldClassification" berhasil diperbarui menjadi "$newClassificationName".');
       } catch (e) {
-        log('Error creating/editing group: $e');
+        log('Error updating classification: $e');
         _showNotification(
-            'Gagal', 'Gagal membuat/mengedit grup. Silakan coba lagi.',
+            'Gagal', 'Gagal memperbarui klasifikasi. Silakan coba lagi.',
             isError: true);
       }
     }
   }
 
-  Future<void> _deleteGroup(String groupId) async {
+  Future<void> _deleteClassification(String classification) async {
     bool? confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: const Text('Konfirmasi Hapus'),
-        content: const Text(
-            'Apakah Anda yakin ingin menghapus grup ini? Semua item di dalamnya akan kehilangan grupnya.'),
+        content: Text(
+            'Apakah Anda yakin ingin menghapus klasifikasi "$classification"? Semua item di dalamnya akan kehilangan klasifikasinya.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(false),
@@ -127,94 +126,29 @@ class _GroupManagementDialogState extends State<GroupManagementDialog> {
 
     if (confirmed == true) {
       try {
-        await _firestore.collection('groups').doc(groupId).delete();
-        _showNotification('Berhasil', 'Grup berhasil dihapus.');
+        QuerySnapshot snapshot = await _firestore
+            .collection('items')
+            .where('classification', isEqualTo: classification)
+            .get();
+
+        WriteBatch batch = _firestore.batch();
+        for (var doc in snapshot.docs) {
+          batch.update(doc.reference, {'classification': null});
+        }
+        await batch.commit();
+
+        _showNotification(
+            'Berhasil', 'Klasifikasi "$classification" berhasil dihapus.');
       } catch (e) {
-        log('Error deleting group: $e');
-        _showNotification('Gagal', 'Gagal menghapus grup. Silakan coba lagi.',
+        log('Error deleting classification: $e');
+        _showNotification(
+            'Gagal', 'Gagal menghapus klasifikasi. Silakan coba lagi.',
             isError: true);
       }
     }
   }
 
-  Future<void> _manageItemsInGroup(Group group) async {
-    final itemsSnapshot = await _firestore.collection('items').get();
-    final allItems = itemsSnapshot.docs
-        .map((doc) =>
-            Item.fromFirestore(doc.data() as Map<String, dynamic>, doc.id))
-        .toList();
-
-    Set<String> selectedItemIds = Set<String>.from(group.itemIds);
-    await showDialog(
-      context: context,
-      builder: (context) {
-        return StatefulBuilder(
-          builder: (context, setState) {
-            return AlertDialog(
-              title: Text('Atur Item untuk "${group.name}"'),
-              content: SizedBox(
-                width: double.maxFinite,
-                child: ListView.builder(
-                  itemCount: allItems.length,
-                  itemBuilder: (context, index) {
-                    final item = allItems[index];
-                    final isSelected = selectedItemIds.contains(item.id);
-                    return CheckboxListTile(
-                      title: Text(item.name),
-                      value: isSelected,
-                      onChanged: (bool? newValue) {
-                        setState(() {
-                          if (newValue == true) {
-                            selectedItemIds.add(item.id!);
-                          } else {
-                            selectedItemIds.remove(item.id);
-                          }
-                        });
-                      },
-                    );
-                  },
-                ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text('Batal'),
-                ),
-                ElevatedButton(
-                  onPressed: () async {
-                    try {
-                      await _firestore
-                          .collection('groups')
-                          .doc(group.id)
-                          .update({
-                        'itemIds': selectedItemIds.toList(),
-                      });
-                      if (context.mounted) {
-                        Navigator.pop(
-                            context); // Menutup dialog terlebih dahulu
-                        await _showNotification(
-                            'Berhasil', 'Item di grup berhasil diperbarui.');
-                      }
-                    } catch (e) {
-                      log('Error saving group items: $e');
-                      if (context.mounted) {
-                        _showNotification(
-                            'Gagal', 'Gagal menyimpan perubahan. Coba lagi.',
-                            isError: true);
-                      }
-                    }
-                  },
-                  child: const Text('Simpan'),
-                ),
-              ],
-            );
-          },
-        );
-      },
-    );
-  }
-
-  Future<void> _exportQrCode() async {
+  Future<void> _exportQrCode(String qrData) async {
     try {
       RenderRepaintBoundary boundary =
           _qrKey.currentContext!.findRenderObject() as RenderRepaintBoundary;
@@ -272,17 +206,13 @@ class _GroupManagementDialogState extends State<GroupManagementDialog> {
     }
   }
 
-  void _showQrCodeForGroup(Group group) {
-    if (group.id == null) {
-      _showNotification('Error', 'ID grup tidak valid.', isError: true);
-      return;
-    }
-    String qrData = 'group:${group.id}';
+  void _showQrCodeForClassification(String classificationName) {
+    String qrData = 'group:$classificationName';
     showDialog(
       context: context,
       builder: (dialogContext) {
         return AlertDialog(
-          title: Text('QR Code untuk Grup "${group.name}"'),
+          title: Text('QR Code untuk Grup "$classificationName"'),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -312,7 +242,7 @@ class _GroupManagementDialogState extends State<GroupManagementDialog> {
               child: const Text('Tutup'),
             ),
             ElevatedButton(
-              onPressed: _exportQrCode,
+              onPressed: () => _exportQrCode(qrData),
               child: const Text('Export QR'),
             ),
           ],
@@ -325,17 +255,10 @@ class _GroupManagementDialogState extends State<GroupManagementDialog> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Manajemen Grup'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.add),
-            onPressed: () => _createOrEditGroup(),
-            tooltip: 'Tambah Grup Baru',
-          ),
-        ],
+        title: const Text('Manajemen Grup (Klasifikasi)'),
       ),
       body: StreamBuilder<QuerySnapshot>(
-        stream: _firestore.collection('groups').snapshots(),
+        stream: _firestore.collection('items').snapshots(),
         builder: (context, snapshot) {
           if (snapshot.hasError) {
             return Center(child: Text('Error: ${snapshot.error}'));
@@ -343,45 +266,56 @@ class _GroupManagementDialogState extends State<GroupManagementDialog> {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
           }
-          final groups = snapshot.data!.docs
-              .map((doc) => Group.fromFirestore(doc))
+
+          final List<Item> allItems = snapshot.data!.docs
+              .map((doc) => Item.fromFirestore(
+                  doc.data() as Map<String, dynamic>, doc.id))
               .toList();
-          if (groups.isEmpty) {
-            return const Center(child: Text('Belum ada grup yang dibuat.'));
+          final uniqueClassifications = allItems
+              .map((item) => item.classification)
+              .whereType<String>()
+              .toSet()
+              .toList();
+          uniqueClassifications.sort();
+
+          if (uniqueClassifications.isEmpty) {
+            return const Center(
+                child: Text('Belum ada klasifikasi yang dibuat.'));
           }
 
           return ListView.builder(
-            itemCount: groups.length,
+            itemCount: uniqueClassifications.length,
             itemBuilder: (context, index) {
-              final group = groups[index];
+              final classification = uniqueClassifications[index];
+              final itemsInGroupCount = allItems
+                  .where((item) => item.classification == classification)
+                  .length;
+
               return Card(
                 margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                 child: ListTile(
-                  title: Text(group.name,
+                  title: Text(classification,
                       style: const TextStyle(fontWeight: FontWeight.bold)),
-                  subtitle: Text('${group.itemIds.length} item'),
+                  subtitle: Text('$itemsInGroupCount item'),
                   trailing: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       IconButton(
                         icon: const Icon(Icons.qr_code, color: Colors.purple),
-                        onPressed: () => _showQrCodeForGroup(group),
+                        onPressed: () =>
+                            _showQrCodeForClassification(classification),
                         tooltip: 'Generate QR Code Grup',
                       ),
                       IconButton(
                         icon: const Icon(Icons.edit, color: Colors.blue),
-                        onPressed: () => _createOrEditGroup(group: group),
-                        tooltip: 'Edit Grup',
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.group_add, color: Colors.green),
-                        onPressed: () => _manageItemsInGroup(group),
-                        tooltip: 'Atur Item di Grup',
+                        onPressed: () =>
+                            _editItemClassification(classification),
+                        tooltip: 'Edit Klasifikasi',
                       ),
                       IconButton(
                         icon: const Icon(Icons.delete, color: Colors.red),
-                        onPressed: () => _deleteGroup(group.id!),
-                        tooltip: 'Hapus Grup',
+                        onPressed: () => _deleteClassification(classification),
+                        tooltip: 'Hapus Klasifikasi',
                       ),
                     ],
                   ),
