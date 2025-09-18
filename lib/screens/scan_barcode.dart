@@ -366,30 +366,37 @@ class _ScanBarcodeScreenState extends State<ScanBarcodeScreen> {
                                   Padding(
                                     padding: const EdgeInsets.symmetric(
                                         horizontal: 16.0, vertical: 8.0),
-                                    child: item.quantityOrRemark is int
-                                        ? TextField(
-                                            controller:
-                                                currentQuantityControllers[
-                                                    item.id],
-                                            decoration: InputDecoration(
-                                              labelText: _isAdding
-                                                  ? 'Kuantitas Ditambah'
-                                                  : 'Kuantitas Diambil',
-                                              border:
-                                                  const OutlineInputBorder(),
-                                            ),
-                                            keyboardType: TextInputType.number,
-                                          )
-                                        : TextField(
-                                            controller:
-                                                currentRemarksControllers[
-                                                    item.id],
-                                            decoration: const InputDecoration(
-                                              labelText: 'Remarks Pengambilan',
-                                              border: OutlineInputBorder(),
-                                            ),
-                                            maxLines: 3,
-                                          ),
+                                    child: Column(
+                                      children: [
+                                        item.quantityOrRemark is int
+                                            ? TextFormField(
+                                                controller:
+                                                    currentQuantityControllers[
+                                                        item.id],
+                                                decoration: InputDecoration(
+                                                  labelText: _isAdding
+                                                      ? 'Kuantitas Ditambah'
+                                                      : 'Kuantitas Diambil',
+                                                  border:
+                                                      const OutlineInputBorder(),
+                                                ),
+                                                keyboardType:
+                                                    TextInputType.number,
+                                              )
+                                            : TextFormField(
+                                                controller:
+                                                    currentRemarksControllers[
+                                                        item.id],
+                                                decoration:
+                                                    const InputDecoration(
+                                                  labelText:
+                                                      'Remarks Pengambilan',
+                                                  border: OutlineInputBorder(),
+                                                ),
+                                                maxLines: 3,
+                                              ),
+                                      ],
+                                    ),
                                   ),
                               ],
                             );
@@ -467,55 +474,76 @@ class _ScanBarcodeScreenState extends State<ScanBarcodeScreen> {
       return;
     }
 
-    // Menampilkan dialog konfirmasi baru dengan daftar item yang akan diproses
-    bool? confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Konfirmasi Pilihan'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('Apakah Anda yakin ingin memproses item berikut?'),
-            const SizedBox(height: 10),
-            ...itemsToProcess.map((data) {
-              Item item = data['item'];
-              if (item.quantityOrRemark is int) {
-                int qty = data['quantity'];
-                return Text(
-                    '- ${item.name}: ${_isAdding ? 'Tambah' : 'Ambil'} $qty');
-              } else {
-                return Text('- ${item.name}: Remarks "${data['remark']}"');
-              }
-            }).toList(),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context, false);
-            },
-            child: const Text('Kembali'),
-          ),
-          ElevatedButton(
-            onPressed: () =>
-                Navigator.pop(context, true), // Konfirmasi dan proses
-            child: const Text('Proses'),
-          ),
-        ],
-      ),
-    );
-    // Tutup dialog pemilihan item sebelum memproses item.
+    // Tutup dialog pemilihan item sebelum menampilkan dialog konfirmasi
     if (parentDialogContext.mounted) {
       Navigator.pop(parentDialogContext);
     }
+
+    // Menampilkan dialog konfirmasi baru dengan satu form remarks umum
+    final TextEditingController groupRemarksController =
+        TextEditingController();
+    bool? confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Konfirmasi Pilihan Grup'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Apakah Anda yakin ingin memproses item berikut?'),
+                const SizedBox(height: 10),
+                ...itemsToProcess.map((data) {
+                  Item item = data['item'];
+                  if (item.quantityOrRemark is int) {
+                    int qty = data['quantity'];
+                    return Text(
+                        '- ${item.name}: ${_isAdding ? 'Tambah' : 'Ambil'} $qty');
+                  } else {
+                    return Text('- ${item.name}: Remarks "${data['remark']}"');
+                  }
+                }).toList(),
+                const SizedBox(height: 20),
+                TextFormField(
+                  controller: groupRemarksController,
+                  decoration: const InputDecoration(
+                    labelText: 'Catatan Umum (Opsional)',
+                    hintText: 'Tambahkan catatan untuk seluruh transaksi...',
+                    border: OutlineInputBorder(),
+                  ),
+                  maxLines: 3,
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context, false);
+              },
+              child: const Text('Kembali'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Proses'),
+            ),
+          ],
+        );
+      },
+    );
+
     if (confirmed == true) {
-      _processSelectedGroupItems(itemsToProcess);
+      String? groupRemarks = groupRemarksController.text.trim().isEmpty
+          ? null
+          : groupRemarksController.text.trim();
+      _processSelectedGroupItems(itemsToProcess, groupRemarks: groupRemarks);
     }
   }
 
   Future<void> _processSelectedGroupItems(
-      List<Map<String, dynamic>> itemsToProcess) async {
+      List<Map<String, dynamic>> itemsToProcess,
+      {String? groupRemarks}) async {
     setState(() {
       _isLoading = true;
     });
@@ -546,10 +574,13 @@ class _ScanBarcodeScreenState extends State<ScanBarcodeScreen> {
           _showNotification('Sukses',
               'Stok ${item.name} $operation sebanyak $quantity. Sisa: $updatedStock');
 
-          await _addLogEntry(item, newQuantity, remainingStock: updatedStock);
+          // Menggunakan remarks grup jika ada
+          await _addLogEntry(item, newQuantity,
+              remainingStock: updatedStock, remarks: groupRemarks);
         } else {
           String remarks = data['remark'];
-          await _addLogEntry(item, remarks, remarks: remarks);
+          // Untuk item remarks-based, remarks yang sudah ada lebih diutamakan, tapi bisa juga diganti dengan remarks grup
+          await _addLogEntry(item, remarks, remarks: groupRemarks ?? remarks);
           _showNotification('Sukses', 'Pengambilan ${item.name} dicatat.');
         }
       } catch (e) {
