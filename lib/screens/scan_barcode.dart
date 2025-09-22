@@ -28,7 +28,6 @@ class _ScanBarcodeScreenState extends State<ScanBarcodeScreen> {
   bool _isStartingScan = false;
 
   Timer? _notificationTimer;
-  Timer? _scanCooldownTimer;
   Rect? _detectedBarcodeRect;
   Size? _viewSize;
 
@@ -46,7 +45,6 @@ class _ScanBarcodeScreenState extends State<ScanBarcodeScreen> {
   void initState() {
     super.initState();
     _fetchUserRole();
-    _startInitialScan(); // Call a new method to handle the initial scan
   }
 
   @override
@@ -56,7 +54,6 @@ class _ScanBarcodeScreenState extends State<ScanBarcodeScreen> {
     _remarksController.dispose();
     _scannerController?.dispose();
     _notificationTimer?.cancel();
-    _scanCooldownTimer?.cancel();
     _audioPlayer.dispose();
     super.dispose();
   }
@@ -134,12 +131,13 @@ class _ScanBarcodeScreenState extends State<ScanBarcodeScreen> {
     }
   }
 
-  // New method to handle the initial scan start logic
   Future<void> _startInitialScan() async {
     if (_isScanning || _isLoading || _isStartingScan) {
       log('Scan or loading already in progress.');
       return;
     }
+
+    await _scannerController?.dispose();
 
     setState(() {
       _isStartingScan = true;
@@ -165,55 +163,21 @@ class _ScanBarcodeScreenState extends State<ScanBarcodeScreen> {
   }
 
   void _onBarcodeDetected(BarcodeCapture capture) {
-    if (_scanCooldownTimer?.isActive ?? false) {
-      log('Scanner is in cooldown period.');
+    if (!_isScanning) {
       return;
     }
 
     if (capture.barcodes.isNotEmpty) {
       final Barcode detectedBarcode = capture.barcodes.first;
-      final Rect? boundingBox = detectedBarcode.corners != null
-          ? Rect.fromLTRB(
-              detectedBarcode.corners!
-                  .map((e) => e.dx)
-                  .reduce((a, b) => a < b ? a : b),
-              detectedBarcode.corners!
-                  .map((e) => e.dy)
-                  .reduce((a, b) => a < b ? a : b),
-              detectedBarcode.corners!
-                  .map((e) => e.dx)
-                  .reduce((a, b) => a > b ? a : b),
-              detectedBarcode.corners!
-                  .map((e) => e.dy)
-                  .reduce((a, b) => a > b ? a : b),
-            )
-          : null;
-
-      if (boundingBox != null && mounted) {
-        setState(() {
-          _detectedBarcodeRect = boundingBox;
-        });
-      }
+      final String? barcodeValue = detectedBarcode.rawValue;
 
       _scannerController?.stop();
       if (mounted) {
         setState(() {
           _isScanning = false;
+          _detectedBarcodeRect = null;
         });
       }
-
-      _scanCooldownTimer = Timer(const Duration(seconds: 3), () {
-        _scannerController?.start();
-        if (mounted) {
-          setState(() {
-            _isScanning = true;
-            _detectedBarcodeRect = null;
-          });
-        }
-        _scanCooldownTimer = null;
-      });
-
-      final String? barcodeValue = detectedBarcode.rawValue;
 
       log('Scanned barcode result: $barcodeValue (Format: ${detectedBarcode.format})');
 
@@ -302,6 +266,9 @@ class _ScanBarcodeScreenState extends State<ScanBarcodeScreen> {
           .map((doc) =>
               Item.fromFirestore(doc.data() as Map<String, dynamic>, doc.id))
           .toList();
+
+      allGroupItems
+          .sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
 
       Map<String, bool> currentSelectedItems = selectedItems ?? {};
       Map<String, TextEditingController> currentQuantityControllers =
@@ -762,7 +729,7 @@ class _ScanBarcodeScreenState extends State<ScanBarcodeScreen> {
   @override
   Widget build(BuildContext context) {
     final Size screenSize = MediaQuery.of(context).size;
-    final double scanWindowSize = screenSize.width * 0.7;
+    final double scanWindowSize = screenSize.width * 0.6;
 
     return Padding(
       padding: const EdgeInsets.all(16.0),
@@ -881,9 +848,7 @@ class _ScanBarcodeScreenState extends State<ScanBarcodeScreen> {
                               border: const OutlineInputBorder(),
                               filled: true,
                               fillColor: const Color(0xFFF3F4F6),
-                              suffixIcon: _isLoading ||
-                                      _isScanning ||
-                                      _isStartingScan
+                              suffixIcon: _isLoading
                                   ? const Padding(
                                       padding: EdgeInsets.all(8.0),
                                       child: CircularProgressIndicator(
@@ -891,8 +856,7 @@ class _ScanBarcodeScreenState extends State<ScanBarcodeScreen> {
                                     )
                                   : IconButton(
                                       icon: const Icon(Icons.qr_code_scanner),
-                                      onPressed:
-                                          _startInitialScan, // Use the corrected method
+                                      onPressed: _startInitialScan,
                                     ),
                             ),
                           ),
@@ -1018,7 +982,7 @@ class _ScanBarcodeScreenState extends State<ScanBarcodeScreen> {
             padding: EdgeInsets.only(
                 top: MediaQuery.of(context).size.height / 2 - height / 2 - 50),
             child: const Text(
-              'Arahkan kamera ke barcode',
+              'Arahkan ke barcode',
               style: TextStyle(
                 color: Colors.white,
                 fontSize: 18,
