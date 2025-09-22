@@ -172,11 +172,16 @@ class _GroupManagementDialogState extends State<GroupManagementDialog> {
         if (!mounted) return;
 
         if (resultPath != null) {
-          final File file = File(resultPath);
+          // PERBAIKAN: Tambahkan ekstensi .png jika tidak ada
+          final String finalPath = resultPath.toLowerCase().endsWith('.png')
+              ? resultPath
+              : '$resultPath.png';
+
+          final File file = File(finalPath);
           await file.writeAsBytes(pngBytes);
           _showNotification(
-              'Berhasil', 'QR Code berhasil disimpan ke: $resultPath');
-          log('File QR Code berhasil diekspor ke: $resultPath');
+              'Berhasil', 'QR Code berhasil disimpan ke: $finalPath');
+          log('File QR Code berhasil diekspor ke: $finalPath');
         } else {
           _showNotification(
               'Ekspor Dibatalkan', 'Ekspor dibatalkan oleh pengguna.',

@@ -7,7 +7,6 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:QR_Aid/models/item.dart';
 import 'package:QR_Aid/models/log_entry.dart';
-import 'package:QR_Aid/models/group.dart';
 import 'package:another_flushbar/flushbar.dart';
 import 'package:audioplayers/audioplayers.dart';
 
@@ -26,8 +25,12 @@ class _ScanBarcodeScreenState extends State<ScanBarcodeScreen> {
   MobileScannerController? _scannerController;
   bool _isLoading = false;
   bool _isScanning = false;
+  bool _isStartingScan = false;
 
   Timer? _notificationTimer;
+  Timer? _scanCooldownTimer;
+  Rect? _detectedBarcodeRect;
+  Size? _viewSize;
 
   Item? _scannedItem;
   bool _isQuantityBased = true;
@@ -42,35 +45,8 @@ class _ScanBarcodeScreenState extends State<ScanBarcodeScreen> {
   @override
   void initState() {
     super.initState();
-    _scannerController = MobileScannerController(
-      detectionSpeed: DetectionSpeed.normal,
-      facing: CameraFacing.back,
-    );
     _fetchUserRole();
-  }
-
-  Future<void> _fetchUserRole() async {
-    User? currentUser = _auth.currentUser;
-    if (currentUser != null) {
-      try {
-        DocumentSnapshot userDoc =
-            await _firestore.collection('users').doc(currentUser.uid).get();
-        if (userDoc.exists) {
-          final userData = userDoc.data() as Map<String, dynamic>;
-          setState(() {
-            _userRole = userData['role'] ?? 'staff';
-            if (_userRole == 'staff') {
-              _isAdding = false;
-            } else {
-              _isAdding = true;
-            }
-          });
-          log('User role fetched: $_userRole');
-        }
-      } catch (e) {
-        log('Error fetching user role: $e');
-      }
-    }
+    _startInitialScan(); // Call a new method to handle the initial scan
   }
 
   @override
@@ -78,9 +54,9 @@ class _ScanBarcodeScreenState extends State<ScanBarcodeScreen> {
     _barcodeController.dispose();
     _quantityController.dispose();
     _remarksController.dispose();
-    _scannerController?.stop();
     _scannerController?.dispose();
     _notificationTimer?.cancel();
+    _scanCooldownTimer?.cancel();
     _audioPlayer.dispose();
     super.dispose();
   }
@@ -134,51 +110,119 @@ class _ScanBarcodeScreenState extends State<ScanBarcodeScreen> {
     });
   }
 
-  Future<void> _startScanBarcode() async {
-    if (_isScanning || _isLoading) {
+  Future<void> _fetchUserRole() async {
+    User? currentUser = _auth.currentUser;
+    if (currentUser != null) {
+      try {
+        DocumentSnapshot userDoc =
+            await _firestore.collection('users').doc(currentUser.uid).get();
+        if (userDoc.exists) {
+          final userData = userDoc.data() as Map<String, dynamic>;
+          setState(() {
+            _userRole = userData['role'] ?? 'staff';
+            if (_userRole == 'staff') {
+              _isAdding = false;
+            } else {
+              _isAdding = true;
+            }
+          });
+          log('User role fetched: $_userRole');
+        }
+      } catch (e) {
+        log('Error fetching user role: $e');
+      }
+    }
+  }
+
+  // New method to handle the initial scan start logic
+  Future<void> _startInitialScan() async {
+    if (_isScanning || _isLoading || _isStartingScan) {
       log('Scan or loading already in progress.');
       return;
     }
 
     setState(() {
-      _isScanning = true;
+      _isStartingScan = true;
+      _isScanning = false;
       _scannedItem = null;
       _barcodeController.clear();
       _quantityController.clear();
       _remarksController.clear();
+      _detectedBarcodeRect = null;
+      _scannerController = MobileScannerController(
+        detectionSpeed: DetectionSpeed.normal,
+        facing: CameraFacing.back,
+      );
     });
 
-    try {
-      await _scannerController?.start();
-    } catch (e) {
-      log('Error starting scanner: $e');
+    await Future.delayed(const Duration(milliseconds: 500));
+    if (mounted) {
       setState(() {
-        _isScanning = false;
+        _isStartingScan = false;
+        _isScanning = true;
       });
-      _showNotification(
-          'Gagal Memulai Pemindai', 'Terjadi kesalahan saat memulai kamera: $e',
-          isError: true);
     }
   }
 
   void _onBarcodeDetected(BarcodeCapture capture) {
+    if (_scanCooldownTimer?.isActive ?? false) {
+      log('Scanner is in cooldown period.');
+      return;
+    }
+
     if (capture.barcodes.isNotEmpty) {
       final Barcode detectedBarcode = capture.barcodes.first;
+      final Rect? boundingBox = detectedBarcode.corners != null
+          ? Rect.fromLTRB(
+              detectedBarcode.corners!
+                  .map((e) => e.dx)
+                  .reduce((a, b) => a < b ? a : b),
+              detectedBarcode.corners!
+                  .map((e) => e.dy)
+                  .reduce((a, b) => a < b ? a : b),
+              detectedBarcode.corners!
+                  .map((e) => e.dx)
+                  .reduce((a, b) => a > b ? a : b),
+              detectedBarcode.corners!
+                  .map((e) => e.dy)
+                  .reduce((a, b) => a > b ? a : b),
+            )
+          : null;
+
+      if (boundingBox != null && mounted) {
+        setState(() {
+          _detectedBarcodeRect = boundingBox;
+        });
+      }
+
+      _scannerController?.stop();
+      if (mounted) {
+        setState(() {
+          _isScanning = false;
+        });
+      }
+
+      _scanCooldownTimer = Timer(const Duration(seconds: 3), () {
+        _scannerController?.start();
+        if (mounted) {
+          setState(() {
+            _isScanning = true;
+            _detectedBarcodeRect = null;
+          });
+        }
+        _scanCooldownTimer = null;
+      });
+
       final String? barcodeValue = detectedBarcode.rawValue;
 
       log('Scanned barcode result: $barcodeValue (Format: ${detectedBarcode.format})');
 
       if (barcodeValue != null) {
-        _scannerController?.stop();
-        setState(() {
-          _isScanning = false;
-        });
-
         if (barcodeValue.startsWith('group:')) {
-          String groupId = barcodeValue.substring(6);
+          String classification = barcodeValue.substring(6);
           _showNotification('QR Code Grup Ditemukan', 'Memuat item grup...');
           _playScanSound();
-          _showGroupItemsSelection(groupId);
+          _showItemsByClassification(classification);
         } else if (barcodeValue.length == 13) {
           _barcodeController.text = barcodeValue;
           _showNotification('Barcode Ditemukan', 'Barcode EAN-13 terdeteksi.');
@@ -237,30 +281,23 @@ class _ScanBarcodeScreenState extends State<ScanBarcodeScreen> {
     }
   }
 
-  Future<void> _showGroupItemsSelection(String groupId,
+  Future<void> _showItemsByClassification(String classification,
       {Map<String, bool>? selectedItems,
       Map<String, TextEditingController>? quantityControllers,
       Map<String, TextEditingController>? remarksControllers}) async {
     try {
-      DocumentSnapshot groupDoc =
-          await _firestore.collection('groups').doc(groupId).get();
-      if (!groupDoc.exists) {
-        _showNotification(
-            'Grup Tidak Ditemukan', 'Grup dengan QR Code ini tidak ada.',
-            isError: true);
-        return;
-      }
-      final group = Group.fromFirestore(groupDoc);
-      if (group.itemIds.isEmpty) {
-        _showNotification('Grup Kosong', 'Grup ini tidak memiliki item.',
+      QuerySnapshot itemsSnapshot = await _firestore
+          .collection('items')
+          .where('classification', isEqualTo: classification)
+          .get();
+
+      if (itemsSnapshot.docs.isEmpty) {
+        _showNotification('Grup Tidak Ditemukan',
+            'Tidak ada item dengan klasifikasi "$classification".',
             isError: true);
         return;
       }
 
-      final itemsSnapshot = await _firestore
-          .collection('items')
-          .where(FieldPath.documentId, whereIn: group.itemIds)
-          .get();
       final allGroupItems = itemsSnapshot.docs
           .map((doc) =>
               Item.fromFirestore(doc.data() as Map<String, dynamic>, doc.id))
@@ -300,7 +337,7 @@ class _ScanBarcodeScreenState extends State<ScanBarcodeScreen> {
               }).toList();
 
               return AlertDialog(
-                title: Text('Pilih Item dari Grup "${group.name}"'),
+                title: Text('Pilih Item dari Grup "$classification"'),
                 content: SizedBox(
                   width: double.maxFinite,
                   child: Column(
@@ -308,7 +345,7 @@ class _ScanBarcodeScreenState extends State<ScanBarcodeScreen> {
                     children: [
                       TextField(
                         controller: searchController,
-                        decoration: InputDecoration(
+                        decoration: const InputDecoration(
                           labelText: 'Cari Item',
                           border: OutlineInputBorder(),
                           prefixIcon: Icon(Icons.search),
@@ -317,12 +354,12 @@ class _ScanBarcodeScreenState extends State<ScanBarcodeScreen> {
                           setState(() {});
                         },
                       ),
-                      SizedBox(height: 10),
+                      const SizedBox(height: 10),
                       if (currentSelectedItems.values.any((element) => element))
                         Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(
+                            const Text(
                               'Item Terpilih:',
                               style: TextStyle(
                                 fontWeight: FontWeight.bold,
@@ -335,7 +372,7 @@ class _ScanBarcodeScreenState extends State<ScanBarcodeScreen> {
                                 .map((item) {
                               return Text('- ${item.name}');
                             }).toList(),
-                            Divider(),
+                            const Divider(),
                           ],
                         ),
                       Flexible(
@@ -474,12 +511,10 @@ class _ScanBarcodeScreenState extends State<ScanBarcodeScreen> {
       return;
     }
 
-    // Tutup dialog pemilihan item sebelum menampilkan dialog konfirmasi
     if (parentDialogContext.mounted) {
       Navigator.pop(parentDialogContext);
     }
 
-    // Menampilkan dialog konfirmasi baru dengan satu form remarks umum
     final TextEditingController groupRemarksController =
         TextEditingController();
     bool? confirmed = await showDialog<bool>(
@@ -574,12 +609,10 @@ class _ScanBarcodeScreenState extends State<ScanBarcodeScreen> {
           _showNotification('Sukses',
               'Stok ${item.name} $operation sebanyak $quantity. Sisa: $updatedStock');
 
-          // Menggunakan remarks grup jika ada
           await _addLogEntry(item, newQuantity,
               remainingStock: updatedStock, remarks: groupRemarks);
         } else {
           String remarks = data['remark'];
-          // Untuk item remarks-based, remarks yang sudah ada lebih diutamakan, tapi bisa juga diganti dengan remarks grup
           await _addLogEntry(item, remarks, remarks: groupRemarks ?? remarks);
           _showNotification('Sukses', 'Pengambilan ${item.name} dicatat.');
         }
@@ -737,20 +770,25 @@ class _ScanBarcodeScreenState extends State<ScanBarcodeScreen> {
         onTap: () {
           FocusScope.of(context).unfocus();
         },
-        child: _isScanning
+        child: _isScanning || _isStartingScan
             ? Stack(
                 children: [
-                  MobileScanner(
-                    controller: _scannerController,
-                    onDetect: _onBarcodeDetected,
-                    scanWindow: Rect.fromCenter(
-                      center:
-                          Offset(screenSize.width / 2, screenSize.height / 2),
-                      width: scanWindowSize,
-                      height: scanWindowSize,
+                  if (_isScanning)
+                    MobileScanner(
+                      controller: _scannerController!,
+                      onDetect: _onBarcodeDetected,
+                      scanWindow: Rect.fromCenter(
+                        center:
+                            Offset(screenSize.width / 2, screenSize.height / 2),
+                        width: scanWindowSize,
+                        height: scanWindowSize,
+                      ),
                     ),
-                  ),
                   _buildScanWindowOverlay(scanWindowSize, scanWindowSize),
+                  if (_isStartingScan)
+                    const Center(
+                      child: CircularProgressIndicator(color: Colors.white),
+                    ),
                   Positioned(
                     bottom: 16,
                     left: 16,
@@ -759,8 +797,9 @@ class _ScanBarcodeScreenState extends State<ScanBarcodeScreen> {
                       onPressed: () {
                         setState(() {
                           _isScanning = false;
+                          _isStartingScan = false;
+                          _scannerController = null;
                         });
-                        _scannerController?.stop();
                       },
                       child: const Text('Batalkan Scan'),
                     ),
@@ -842,7 +881,9 @@ class _ScanBarcodeScreenState extends State<ScanBarcodeScreen> {
                               border: const OutlineInputBorder(),
                               filled: true,
                               fillColor: const Color(0xFFF3F4F6),
-                              suffixIcon: _isLoading || _isScanning
+                              suffixIcon: _isLoading ||
+                                      _isScanning ||
+                                      _isStartingScan
                                   ? const Padding(
                                       padding: EdgeInsets.all(8.0),
                                       child: CircularProgressIndicator(
@@ -850,7 +891,8 @@ class _ScanBarcodeScreenState extends State<ScanBarcodeScreen> {
                                     )
                                   : IconButton(
                                       icon: const Icon(Icons.qr_code_scanner),
-                                      onPressed: _startScanBarcode,
+                                      onPressed:
+                                          _startInitialScan, // Use the corrected method
                                     ),
                             ),
                           ),
@@ -945,10 +987,10 @@ class _ScanBarcodeScreenState extends State<ScanBarcodeScreen> {
   }
 
   Widget _buildScanWindowOverlay(double width, double height) {
-    return Positioned.fill(
-      child: Stack(
-        children: [
-          Align(
+    return Stack(
+      children: [
+        Positioned.fill(
+          child: Align(
             alignment: Alignment.center,
             child: Container(
               width: width,
@@ -959,24 +1001,72 @@ class _ScanBarcodeScreenState extends State<ScanBarcodeScreen> {
               ),
             ),
           ),
-          Align(
-            alignment: Alignment.topCenter,
-            child: Padding(
-              padding: EdgeInsets.only(
-                  top:
-                      MediaQuery.of(context).size.height / 2 - height / 2 - 50),
-              child: const Text(
-                'Arahkan kamera ke barcode',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                ),
+        ),
+        if (_isScanning)
+          Positioned.fill(
+            child: CustomPaint(
+              painter: BarcodeRectPainter(
+                detectedRect: _detectedBarcodeRect,
+                viewSize: _viewSize ?? Size.zero,
+                screenSize: MediaQuery.of(context).size,
               ),
             ),
           ),
-        ],
-      ),
+        Align(
+          alignment: Alignment.topCenter,
+          child: Padding(
+            padding: EdgeInsets.only(
+                top: MediaQuery.of(context).size.height / 2 - height / 2 - 50),
+            child: const Text(
+              'Arahkan kamera ke barcode',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+        ),
+      ],
     );
+  }
+}
+
+class BarcodeRectPainter extends CustomPainter {
+  final Rect? detectedRect;
+  final Size viewSize;
+  final Size screenSize;
+
+  BarcodeRectPainter({
+    this.detectedRect,
+    required this.viewSize,
+    required this.screenSize,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (detectedRect == null || viewSize == Size.zero) return;
+
+    final paint = Paint()
+      ..color = Colors.green
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 4.0;
+
+    final double scaleX = screenSize.width / viewSize.width;
+    final double scaleY = screenSize.height / viewSize.height;
+
+    final scaledRect = Rect.fromLTRB(
+      detectedRect!.left * scaleX,
+      detectedRect!.top * scaleY,
+      detectedRect!.right * scaleX,
+      detectedRect!.bottom * scaleY,
+    );
+
+    canvas.drawRect(scaledRect, paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) {
+    return true;
   }
 }
