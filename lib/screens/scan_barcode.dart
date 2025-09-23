@@ -26,6 +26,7 @@ class _ScanBarcodeScreenState extends State<ScanBarcodeScreen> {
   bool _isLoading = false;
   bool _isScanning = false;
   bool _isStartingScan = false;
+  bool _isProcessing = false;
 
   Timer? _notificationTimer;
   Rect? _detectedBarcodeRect;
@@ -163,31 +164,56 @@ class _ScanBarcodeScreenState extends State<ScanBarcodeScreen> {
   }
 
   void _onBarcodeDetected(BarcodeCapture capture) {
-    if (!_isScanning) {
+    if (!_isScanning || _isProcessing) {
       return;
     }
 
     if (capture.barcodes.isNotEmpty) {
       final Barcode detectedBarcode = capture.barcodes.first;
       final String? barcodeValue = detectedBarcode.rawValue;
-
-      _scannerController?.stop();
-      if (mounted) {
-        setState(() {
-          _isScanning = false;
-          _detectedBarcodeRect = null;
-        });
-      }
-
-      log('Scanned barcode result: $barcodeValue (Format: ${detectedBarcode.format})');
+      _viewSize = capture.size;
 
       if (barcodeValue != null) {
+        setState(() {
+          _isProcessing = true;
+          _detectedBarcodeRect = detectedBarcode.corners != null
+              ? Rect.fromLTRB(
+                  detectedBarcode.corners!
+                      .map((e) => e.dx)
+                      .reduce((a, b) => a < b ? a : b),
+                  detectedBarcode.corners!
+                      .map((e) => e.dy)
+                      .reduce((a, b) => a < b ? a : b),
+                  detectedBarcode.corners!
+                      .map((e) => e.dx)
+                      .reduce((a, b) => a > b ? a : b),
+                  detectedBarcode.corners!
+                      .map((e) => e.dy)
+                      .reduce((a, b) => a > b ? a : b),
+                )
+              : null;
+        });
+
         if (barcodeValue.startsWith('group:')) {
+          _scannerController?.stop();
+          if (mounted) {
+            setState(() {
+              _isScanning = false;
+              _detectedBarcodeRect = null;
+            });
+          }
           String classification = barcodeValue.substring(6);
           _showNotification('QR Code Grup Ditemukan', 'Memuat item grup...');
           _playScanSound();
           _showItemsByClassification(classification);
         } else if (barcodeValue.length == 13) {
+          _scannerController?.stop();
+          if (mounted) {
+            setState(() {
+              _isScanning = false;
+              _detectedBarcodeRect = null;
+            });
+          }
           _barcodeController.text = barcodeValue;
           _showNotification('Barcode Ditemukan', 'Barcode EAN-13 terdeteksi.');
           _playScanSound();
@@ -196,6 +222,10 @@ class _ScanBarcodeScreenState extends State<ScanBarcodeScreen> {
           _showNotification('Barcode Invalid',
               'Barcode tidak valid atau bukan EAN-13 / QR Code grup.',
               isError: true);
+          setState(() {
+            _isProcessing = false;
+            _detectedBarcodeRect = null;
+          });
         }
       }
     }
@@ -242,6 +272,12 @@ class _ScanBarcodeScreenState extends State<ScanBarcodeScreen> {
           'Gagal Mengambil Item', 'Error mengambil detail item: $e',
           isError: true);
       log('Error fetching item details: $e');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isProcessing = false;
+        });
+      }
     }
   }
 
@@ -437,6 +473,12 @@ class _ScanBarcodeScreenState extends State<ScanBarcodeScreen> {
       _showNotification(
           'Gagal Memuat Grup', 'Terjadi kesalahan saat memuat item grup.',
           isError: true);
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isProcessing = false;
+        });
+      }
     }
   }
 
@@ -605,6 +647,7 @@ class _ScanBarcodeScreenState extends State<ScanBarcodeScreen> {
 
     setState(() {
       _isLoading = true;
+      _isProcessing = true;
     });
 
     try {
@@ -668,6 +711,9 @@ class _ScanBarcodeScreenState extends State<ScanBarcodeScreen> {
       log('Error processing stock: $e');
     } finally {
       _clearAllForms();
+      setState(() {
+        _isProcessing = false;
+      });
     }
   }
 
@@ -743,7 +789,11 @@ class _ScanBarcodeScreenState extends State<ScanBarcodeScreen> {
                   if (_isScanning)
                     MobileScanner(
                       controller: _scannerController!,
-                      onDetect: _onBarcodeDetected,
+                      onDetect: (capture) {
+                        if (capture.barcodes.isNotEmpty && !_isProcessing) {
+                          _onBarcodeDetected(capture);
+                        }
+                      },
                       scanWindow: Rect.fromCenter(
                         center:
                             Offset(screenSize.width / 2, screenSize.height / 2),
@@ -755,6 +805,21 @@ class _ScanBarcodeScreenState extends State<ScanBarcodeScreen> {
                   if (_isStartingScan)
                     const Center(
                       child: CircularProgressIndicator(color: Colors.white),
+                    ),
+                  if (_isProcessing)
+                    Align(
+                      alignment: Alignment.bottomCenter,
+                      child: Padding(
+                        padding: const EdgeInsets.only(bottom: 120.0),
+                        child: SizedBox(
+                          width: scanWindowSize,
+                          child: LinearProgressIndicator(
+                            valueColor: const AlwaysStoppedAnimation<Color>(
+                                Colors.green),
+                            backgroundColor: Colors.white.withOpacity(0.5),
+                          ),
+                        ),
+                      ),
                     ),
                   Positioned(
                     bottom: 16,
@@ -966,7 +1031,7 @@ class _ScanBarcodeScreenState extends State<ScanBarcodeScreen> {
             ),
           ),
         ),
-        if (_isScanning)
+        if (_isProcessing && _detectedBarcodeRect != null)
           Positioned.fill(
             child: CustomPaint(
               painter: BarcodeRectPainter(
