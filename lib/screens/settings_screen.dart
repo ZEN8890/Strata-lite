@@ -94,6 +94,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _loadUserData() async {
+    if (!mounted) return;
     setState(() {
       _isLoading = true;
       _errorMessage = null;
@@ -102,6 +103,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _currentUser = _auth.currentUser;
 
     if (_currentUser == null) {
+      if (!mounted) return;
       setState(() {
         _errorMessage = 'Tidak ada pengguna yang login.';
         _isLoading = false;
@@ -116,6 +118,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       DocumentSnapshot userDoc =
           await _firestore.collection('users').doc(_currentUser!.uid).get();
 
+      if (!mounted) return;
       if (userDoc.exists) {
         Map<String, dynamic> userData = userDoc.data() as Map<String, dynamic>;
         _nameController.text = userData['name'] ?? '';
@@ -127,9 +130,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
         log('Warning: User document not found in Firestore for UID: ${_currentUser!.uid}');
       }
     } catch (e) {
+      if (!mounted) return;
       _errorMessage = 'Gagal memuat data profil: $e';
       log('Error loading user data from Firestore: $e');
     } finally {
+      if (!mounted) return;
       setState(() {
         _isLoading = false;
       });
@@ -155,6 +160,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       return;
     }
 
+    if (!mounted) return;
     setState(() {
       _isLoading = true;
     });
@@ -166,13 +172,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
         'department': _selectedDepartment,
       }, SetOptions(merge: true));
 
+      if (!mounted) return;
       _showNotification('Berhasil!', 'Profil berhasil diperbarui.',
           isError: false);
       log('User data updated successfully for UID: ${_currentUser!.uid}');
     } catch (e) {
+      if (!mounted) return;
       _showNotification('Gagal Memperbarui Profil', 'Error: $e', isError: true);
       log('Error updating user data: $e');
     } finally {
+      if (!mounted) return;
       setState(() {
         _isLoading = false;
       });
@@ -271,6 +280,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       return;
     }
 
+    if (!mounted) return;
     setState(() {
       _isResettingPassword = true;
     });
@@ -295,11 +305,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
       log('Pembaruan sandi berhasil.');
 
       // Panggil notifikasi hanya setelah proses berhasil dan dialog ditutup
+      if (!mounted) return;
       _showNotification('Berhasil!', 'Password berhasil direset.',
           isError: false);
       _newPasswordController.clear();
       _currentPasswordController.clear();
     } on TimeoutException {
+      if (!mounted) return;
       _showNotification('Gagal!',
           'Permintaan memakan waktu terlalu lama. Periksa koneksi internet Anda.',
           isError: true);
@@ -313,12 +325,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
       } else {
         message = 'Gagal mereset sandi: ${e.message}';
       }
+      if (!mounted) return;
       _showNotification('Gagal!', message, isError: true);
       log('Error resetting password: ${e.code} - ${e.message}');
     } catch (e) {
+      if (!mounted) return;
       _showNotification('Gagal!', 'Terjadi kesalahan umum: $e', isError: true);
       log('Error resetting password: $e');
     } finally {
+      if (!mounted) return;
       setState(() {
         _isResettingPassword = false;
       });
@@ -421,13 +436,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               borderRadius: BorderRadius.circular(8)),
                         ),
                       ),
-                    ),
-                    const SizedBox(height: 20),
-                    ElevatedButton(
-                      onPressed: _saveUserData,
-                      child: _isLoading
-                          ? const CircularProgressIndicator(color: Colors.white)
-                          : const Text('Simpan Perubahan'),
                     ),
                   ],
                 ),

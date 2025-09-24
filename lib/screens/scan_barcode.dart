@@ -1,4 +1,3 @@
-// Path: lib/screens/scan_barcode.dart
 import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'dart:async';
@@ -9,6 +8,7 @@ import 'package:QR_Aid/models/item.dart';
 import 'package:QR_Aid/models/log_entry.dart';
 import 'package:another_flushbar/flushbar.dart';
 import 'package:audioplayers/audioplayers.dart';
+import 'package:flutter/foundation.dart' show defaultTargetPlatform;
 
 class ScanBarcodeScreen extends StatefulWidget {
   const ScanBarcodeScreen({super.key});
@@ -133,6 +133,17 @@ class _ScanBarcodeScreenState extends State<ScanBarcodeScreen> {
   }
 
   Future<void> _startInitialScan() async {
+    if (defaultTargetPlatform == TargetPlatform.windows ||
+        defaultTargetPlatform == TargetPlatform.macOS ||
+        defaultTargetPlatform == TargetPlatform.linux) {
+      _showNotification(
+        'Fitur Tidak Tersedia',
+        'Fitur kamera hanya bisa digunakan di perangkat Mobile.',
+        isError: true,
+      );
+      return;
+    }
+
     if (_isScanning || _isLoading || _isStartingScan) {
       log('Scan or loading already in progress.');
       return;

@@ -29,6 +29,9 @@ class _UsersScreenState extends State<UsersScreen> {
   String _searchQuery = '';
   bool _isLoadingExport = false;
 
+  String? _selectedDepartmentFilter;
+  String? _selectedRoleFilter;
+
   Timer? _notificationTimer;
   final List<String> _departments = [
     'A&G',
@@ -53,6 +56,8 @@ class _UsersScreenState extends State<UsersScreen> {
   void initState() {
     super.initState();
     _searchController.addListener(_onSearchChanged);
+    _selectedDepartmentFilter = 'Semua Departemen';
+    _selectedRoleFilter = 'Semua Role';
   }
 
   @override
@@ -470,7 +475,6 @@ class _UsersScreenState extends State<UsersScreen> {
           'Nama Lengkap',
           'Username',
           'Email Lengkap',
-          'Nomor Telepon',
           'Departemen',
           'Role'
         ];
@@ -479,19 +483,13 @@ class _UsersScreenState extends State<UsersScreen> {
 
         for (int i = 0; i < usersData.length; i++) {
           final userData = usersData[i].data() as Map<String, dynamic>;
-          String phoneNumber = userData['phoneNumber']?.toString() ?? '';
           String email = userData['email'] ?? '';
           String username = email.split('@')[0];
-
-          if (phoneNumber.startsWith('0')) {
-            phoneNumber = "'$phoneNumber";
-          }
 
           List<dynamic> row = [
             userData['name'] ?? '',
             username,
             email,
-            phoneNumber,
             userData['department'] ?? '',
             userData['role'] ?? '',
           ];
@@ -595,7 +593,6 @@ class _UsersScreenState extends State<UsersScreen> {
 
           final nameIndex = headerRow.indexOf('Nama Lengkap');
           final usernameIndex = headerRow.indexOf('Username');
-          final phoneIndex = headerRow.indexOf('Nomor Telepon');
           final departmentIndex = headerRow.indexOf('Departemen');
           final roleIndex = headerRow.indexOf('Role');
           final passwordIndex = headerRow.indexOf('Password');
@@ -606,7 +603,7 @@ class _UsersScreenState extends State<UsersScreen> {
               roleIndex == -1 ||
               passwordIndex == -1) {
             _showNotification('Gagal Import',
-                'File Excel tidak memiliki semua kolom yang diperlukan (Nama Lengkap, Username, Nomor Telepon, Departemen, Role, Password).',
+                'File Excel tidak memiliki semua kolom yang diperlukan (Nama Lengkap, Username, Departemen, Role, Password).',
                 isError: true);
             return;
           }
@@ -627,8 +624,6 @@ class _UsersScreenState extends State<UsersScreen> {
             final String username =
                 (row[usernameIndex]?.value?.toString().trim() ?? '');
             final String email = username + _fictitiousDomain;
-            final String phoneNumber =
-                (row[phoneIndex]?.value?.toString().trim() ?? '');
             String role = (row[roleIndex]?.value?.toString().trim() ?? 'staff')
                 .toLowerCase();
             final String password =
@@ -675,7 +670,6 @@ class _UsersScreenState extends State<UsersScreen> {
                   .set({
                 'name': name,
                 'email': email,
-                'phoneNumber': phoneNumber,
                 'department': department,
                 'role': role,
                 'createdAt': FieldValue.serverTimestamp(),
@@ -719,7 +713,6 @@ class _UsersScreenState extends State<UsersScreen> {
         List<String> headers = [
           'Nama Lengkap',
           'Username',
-          'Nomor Telepon',
           'Departemen',
           'Role',
           'Password'
@@ -893,6 +886,12 @@ class _UsersScreenState extends State<UsersScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final List<String> departmentFilterOptions = [
+      'Semua Departemen',
+      ..._departments
+    ];
+    final List<String> roleFilterOptions = ['Semua Role', ..._roles];
+
     return Column(
       children: [
         Padding(
@@ -904,21 +903,74 @@ class _UsersScreenState extends State<UsersScreen> {
                 RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
             child: Padding(
               padding: const EdgeInsets.all(12.0),
-              child: TextField(
-                controller: _searchController,
-                decoration: InputDecoration(
-                  hintText:
-                      'Cari pengguna (nama, username, departemen, role)...',
-                  prefixIcon: const Icon(Icons.search),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8.0),
-                    borderSide: BorderSide.none,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  TextField(
+                    controller: _searchController,
+                    decoration: InputDecoration(
+                      hintText:
+                          'Cari pengguna (nama, username, departemen, role)...',
+                      prefixIcon: const Icon(Icons.search),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8.0),
+                        borderSide: BorderSide.none,
+                      ),
+                      filled: true,
+                      fillColor: Colors.grey[100],
+                      contentPadding: const EdgeInsets.symmetric(
+                          vertical: 10, horizontal: 10),
+                    ),
                   ),
-                  filled: true,
-                  fillColor: Colors.grey[100],
-                  contentPadding:
-                      const EdgeInsets.symmetric(vertical: 10, horizontal: 10),
-                ),
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: DropdownButtonFormField<String>(
+                          value: _selectedDepartmentFilter,
+                          decoration: const InputDecoration(
+                            labelText: 'Filter Departemen',
+                            border: OutlineInputBorder(),
+                            isDense: true,
+                            contentPadding: EdgeInsets.symmetric(
+                                horizontal: 12, vertical: 10),
+                          ),
+                          items: departmentFilterOptions
+                              .map((dep) => DropdownMenuItem(
+                                  value: dep, child: Text(dep)))
+                              .toList(),
+                          onChanged: (value) {
+                            setState(() {
+                              _selectedDepartmentFilter = value;
+                            });
+                          },
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: DropdownButtonFormField<String>(
+                          value: _selectedRoleFilter,
+                          decoration: const InputDecoration(
+                            labelText: 'Filter Role',
+                            border: OutlineInputBorder(),
+                            isDense: true,
+                            contentPadding: EdgeInsets.symmetric(
+                                horizontal: 12, vertical: 10),
+                          ),
+                          items: roleFilterOptions
+                              .map((role) => DropdownMenuItem(
+                                  value: role, child: Text(role.toUpperCase())))
+                              .toList(),
+                          onChanged: (value) {
+                            setState(() {
+                              _selectedRoleFilter = value;
+                            });
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
               ),
             ),
           ),
@@ -987,18 +1039,28 @@ class _UsersScreenState extends State<UsersScreen> {
                 final String department =
                     (data['department'] ?? '').toLowerCase();
                 final String role = (data['role'] ?? '').toLowerCase();
-                final String phoneNumber =
-                    (data['phoneNumber'] ?? '').toLowerCase();
 
-                return name.contains(lowerCaseQuery) ||
+                final bool matchesSearch = name.contains(lowerCaseQuery) ||
                     username.contains(lowerCaseQuery) ||
                     email.contains(lowerCaseQuery) ||
                     department.contains(lowerCaseQuery) ||
-                    role.contains(lowerCaseQuery) ||
-                    phoneNumber.contains(lowerCaseQuery);
+                    role.contains(lowerCaseQuery);
+
+                final bool matchesDepartment =
+                    _selectedDepartmentFilter == 'Semua Departemen' ||
+                        department
+                            .contains(_selectedDepartmentFilter!.toLowerCase());
+
+                final bool matchesRole = _selectedRoleFilter == 'Semua Role' ||
+                    role.contains(_selectedRoleFilter!.toLowerCase());
+
+                return matchesSearch && matchesDepartment && matchesRole;
               }).toList();
 
-              if (filteredUsers.isEmpty && _searchQuery.isNotEmpty) {
+              if (filteredUsers.isEmpty &&
+                  (_searchQuery.isNotEmpty ||
+                      _selectedDepartmentFilter != 'Semua Departemen' ||
+                      _selectedRoleFilter != 'Semua Role')) {
                 return const Center(child: Text('Pengguna tidak ditemukan.'));
               }
               if (filteredUsers.isEmpty && _searchQuery.isEmpty) {
