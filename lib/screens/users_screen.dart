@@ -27,7 +27,9 @@ class _UsersScreenState extends State<UsersScreen> {
 
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
-  bool _isLoadingExport = false;
+  bool _isProcessingFileOperation = false;
+  String _processingMessage = '';
+  bool _isImportCancelled = false; // <-- Variabel baru untuk pembatalan
 
   String? _selectedDepartmentFilter;
   String? _selectedRoleFilter;
@@ -38,15 +40,13 @@ class _UsersScreenState extends State<UsersScreen> {
     'ENGINEERING',
     'FB PRODUCT',
     'FB SERVICE',
-    'FINANCE',
     'FRONT OFFICE',
     'HOUSEKEEPING',
     'HR',
     'IT',
-    'Marketing',
     'SALES',
     'SALES & MARKETING',
-    'Security',
+    'SECURITY',
   ];
   final List<String> _roles = ['staff', 'admin'];
 
@@ -451,8 +451,10 @@ class _UsersScreenState extends State<UsersScreen> {
   }
 
   Future<void> _exportUsersToExcel() async {
+    if (!mounted) return;
     setState(() {
-      _isLoadingExport = true;
+      _isProcessingFileOperation = true;
+      _processingMessage = 'Mengekspor pengguna...';
     });
 
     await _handleStoragePermission(() async {
@@ -553,7 +555,7 @@ class _UsersScreenState extends State<UsersScreen> {
       } finally {
         if (mounted) {
           setState(() {
-            _isLoadingExport = false;
+            _isProcessingFileOperation = false;
           });
         }
       }
@@ -561,6 +563,13 @@ class _UsersScreenState extends State<UsersScreen> {
   }
 
   Future<void> _importUsersFromExcel() async {
+    if (!mounted) return;
+    setState(() {
+      _isProcessingFileOperation = true;
+      _processingMessage = 'Memilih file untuk diimpor...';
+      _isImportCancelled = false; // Reset status pembatalan
+    });
+
     await _handleStoragePermission(() async {
       try {
         FilePickerResult? result = await FilePicker.platform.pickFiles(
@@ -575,6 +584,11 @@ class _UsersScreenState extends State<UsersScreen> {
               isError: true);
           return;
         }
+
+        if (!mounted) return;
+        setState(() {
+          _processingMessage = 'Mengimpor pengguna dari file Excel...';
+        });
 
         File file = File(result.files.single.path!);
         var bytes = file.readAsBytesSync();
@@ -618,6 +632,11 @@ class _UsersScreenState extends State<UsersScreen> {
           final currentAdminEmail = _auth.currentUser!.email;
 
           for (int i = 1; i < sheet.rows.length; i++) {
+            if (_isImportCancelled) {
+              // <-- Logika pembatalan
+              break;
+            }
+
             final row = sheet.rows[i];
             final String name =
                 (row[nameIndex]?.value?.toString().trim() ?? '');
@@ -685,24 +704,53 @@ class _UsersScreenState extends State<UsersScreen> {
           }
         }
 
-        String importSummaryMessage =
-            '$importedCount pengguna berhasil diimpor. $failedCount pengguna gagal diimpor.';
-
-        _showNotification(
-          'Impor Selesai!',
-          importSummaryMessage,
-          isError: failedCount > 0,
-        );
+        if (_isImportCancelled) {
+          // <-- Notifikasi pembatalan
+          _showNotification(
+              'Impor Dibatalkan', 'Proses impor telah dihentikan.',
+              isError: true);
+        } else {
+          String importSummaryMessage =
+              '$importedCount pengguna berhasil diimpor. $failedCount pengguna gagal diimpor.';
+          _showNotification(
+            'Impor Selesai!',
+            importSummaryMessage,
+            isError: failedCount > 0,
+          );
+        }
       } catch (e) {
         _showNotification(
             'Gagal Import', 'Terjadi kesalahan saat mengimpor file Excel: $e',
             isError: true);
         log('Error importing users: $e');
+      } finally {
+        if (mounted) {
+          setState(() {
+            _isProcessingFileOperation = false;
+          });
+        }
       }
     });
   }
 
+  void _cancelImport() {
+    if (mounted) {
+      setState(() {
+        _isImportCancelled = true;
+        _isProcessingFileOperation = false;
+        _showNotification('Pembatalan', 'Proses impor dibatalkan.',
+            isError: true);
+      });
+    }
+  }
+
   Future<void> _downloadImportTemplate() async {
+    if (!mounted) return;
+    setState(() {
+      _isProcessingFileOperation = true;
+      _processingMessage = 'Mengunduh template...';
+    });
+
     await _handleStoragePermission(() async {
       try {
         final excel = Excel.createExcel();
@@ -768,6 +816,12 @@ class _UsersScreenState extends State<UsersScreen> {
             'Terjadi kesalahan saat mengunduh template: $e',
             isError: true);
         log('Error downloading template: $e');
+      } finally {
+        if (mounted) {
+          setState(() {
+            _isProcessingFileOperation = false;
+          });
+        }
       }
     });
   }
@@ -892,275 +946,320 @@ class _UsersScreenState extends State<UsersScreen> {
     ];
     final List<String> roleFilterOptions = ['Semua Role', ..._roles];
 
-    return Column(
+    return Stack(
       children: [
-        Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Card(
-            margin: EdgeInsets.zero,
-            elevation: 2,
-            shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-            child: Padding(
-              padding: const EdgeInsets.all(12.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  TextField(
-                    controller: _searchController,
-                    decoration: InputDecoration(
-                      hintText:
-                          'Cari pengguna (nama, username, departemen, role)...',
-                      prefixIcon: const Icon(Icons.search),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8.0),
-                        borderSide: BorderSide.none,
-                      ),
-                      filled: true,
-                      fillColor: Colors.grey[100],
-                      contentPadding: const EdgeInsets.symmetric(
-                          vertical: 10, horizontal: 10),
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  Row(
+        Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Card(
+                margin: EdgeInsets.zero,
+                elevation: 2,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10)),
+                child: Padding(
+                  padding: const EdgeInsets.all(12.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Expanded(
-                        child: DropdownButtonFormField<String>(
-                          value: _selectedDepartmentFilter,
-                          decoration: const InputDecoration(
-                            labelText: 'Filter Departemen',
-                            border: OutlineInputBorder(),
-                            isDense: true,
-                            contentPadding: EdgeInsets.symmetric(
-                                horizontal: 12, vertical: 10),
+                      TextField(
+                        controller: _searchController,
+                        decoration: InputDecoration(
+                          hintText:
+                              'Cari pengguna (nama, username, departemen, role)...',
+                          prefixIcon: const Icon(Icons.search),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8.0),
+                            borderSide: BorderSide.none,
                           ),
-                          items: departmentFilterOptions
-                              .map((dep) => DropdownMenuItem(
-                                  value: dep, child: Text(dep)))
-                              .toList(),
-                          onChanged: (value) {
-                            setState(() {
-                              _selectedDepartmentFilter = value;
-                            });
-                          },
+                          filled: true,
+                          fillColor: Colors.grey[100],
+                          contentPadding: const EdgeInsets.symmetric(
+                              vertical: 10, horizontal: 10),
                         ),
                       ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: DropdownButtonFormField<String>(
-                          value: _selectedRoleFilter,
-                          decoration: const InputDecoration(
-                            labelText: 'Filter Role',
-                            border: OutlineInputBorder(),
-                            isDense: true,
-                            contentPadding: EdgeInsets.symmetric(
-                                horizontal: 12, vertical: 10),
+                      const SizedBox(height: 10),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: DropdownButtonFormField<String>(
+                              value: _selectedDepartmentFilter,
+                              decoration: const InputDecoration(
+                                labelText: 'Filter Departemen',
+                                border: OutlineInputBorder(),
+                                isDense: true,
+                                contentPadding: EdgeInsets.symmetric(
+                                    horizontal: 12, vertical: 10),
+                              ),
+                              items: departmentFilterOptions
+                                  .map((dep) => DropdownMenuItem(
+                                      value: dep, child: Text(dep)))
+                                  .toList(),
+                              onChanged: (value) {
+                                setState(() {
+                                  _selectedDepartmentFilter = value;
+                                });
+                              },
+                            ),
                           ),
-                          items: roleFilterOptions
-                              .map((role) => DropdownMenuItem(
-                                  value: role, child: Text(role.toUpperCase())))
-                              .toList(),
-                          onChanged: (value) {
-                            setState(() {
-                              _selectedRoleFilter = value;
-                            });
-                          },
-                        ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: DropdownButtonFormField<String>(
+                              value: _selectedRoleFilter,
+                              decoration: const InputDecoration(
+                                labelText: 'Filter Role',
+                                border: OutlineInputBorder(),
+                                isDense: true,
+                                contentPadding: EdgeInsets.symmetric(
+                                    horizontal: 12, vertical: 10),
+                              ),
+                              items: roleFilterOptions
+                                  .map((role) => DropdownMenuItem(
+                                      value: role,
+                                      child: Text(role.toUpperCase())))
+                                  .toList(),
+                              onChanged: (value) {
+                                setState(() {
+                                  _selectedRoleFilter = value;
+                                });
+                              },
+                            ),
+                          ),
+                        ],
                       ),
                     ],
+                  ),
+                ),
+              ),
+            ),
+            Padding(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Expanded(
+                    child: Text(
+                      'Daftar Pengguna Terdaftar:',
+                      style:
+                          TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+                      overflow: TextOverflow.ellipsis,
+                      maxLines: 1,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  ElevatedButton.icon(
+                    onPressed: _isProcessingFileOperation
+                        ? null
+                        : () => _addEditUser(),
+                    icon: const Icon(Icons.person_add),
+                    label: const Text('Tambah Pengguna'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.blueAccent,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8)),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  IconButton(
+                    icon: const Icon(Icons.more_vert),
+                    onPressed: _isProcessingFileOperation
+                        ? null
+                        : _showImportExportOptions,
+                    tooltip: 'Opsi Import/Export',
+                  ),
+                ],
+              ),
+            ),
+            Expanded(
+              child: StreamBuilder<QuerySnapshot>(
+                stream:
+                    _firestore.collection('users').orderBy('name').snapshots(),
+                builder: (context, snapshot) {
+                  if (snapshot.hasError) {
+                    return Center(child: Text('Error: ${snapshot.error}'));
+                  }
+
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+
+                  if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+                    return const Center(
+                        child: Text('Belum ada pengguna terdaftar.'));
+                  }
+
+                  List<DocumentSnapshot> allUsers = snapshot.data!.docs;
+
+                  List<DocumentSnapshot> filteredUsers =
+                      allUsers.where((userDoc) {
+                    final data = userDoc.data() as Map<String, dynamic>?;
+                    if (data == null) return false;
+
+                    final String lowerCaseQuery = _searchQuery.toLowerCase();
+                    final String name = (data['name'] ?? '').toLowerCase();
+                    final String email = (data['email'] ?? '').toLowerCase();
+                    final String username = email.split('@')[0];
+                    final String department =
+                        (data['department'] ?? '').toLowerCase();
+                    final String role = (data['role'] ?? '').toLowerCase();
+
+                    final bool matchesSearch = name.contains(lowerCaseQuery) ||
+                        username.contains(lowerCaseQuery) ||
+                        email.contains(lowerCaseQuery) ||
+                        department.contains(lowerCaseQuery) ||
+                        role.contains(lowerCaseQuery);
+
+                    final bool matchesDepartment = _selectedDepartmentFilter ==
+                            'Semua Departemen' ||
+                        department
+                            .contains(_selectedDepartmentFilter!.toLowerCase());
+
+                    final bool matchesRole =
+                        _selectedRoleFilter == 'Semua Role' ||
+                            role.contains(_selectedRoleFilter!.toLowerCase());
+
+                    return matchesSearch && matchesDepartment && matchesRole;
+                  }).toList();
+
+                  if (filteredUsers.isEmpty &&
+                      (_searchQuery.isNotEmpty ||
+                          _selectedDepartmentFilter != 'Semua Departemen' ||
+                          _selectedRoleFilter != 'Semua Role')) {
+                    return const Center(
+                        child: Text('Pengguna tidak ditemukan.'));
+                  }
+                  if (filteredUsers.isEmpty && _searchQuery.isEmpty) {
+                    return const Center(
+                        child: Text('Belum ada pengguna terdaftar.'));
+                  }
+
+                  return ListView.builder(
+                    itemCount: filteredUsers.length,
+                    itemBuilder: (context, index) {
+                      final userDoc = filteredUsers[index];
+                      final userData = userDoc.data() as Map<String, dynamic>;
+
+                      final String name = userData['name'] ?? 'N/A';
+                      final String email = userData['email'] ?? 'N/A';
+                      final String department = userData['department'] ?? 'N/A';
+                      final String role = userData['role'] ?? 'N/A';
+
+                      return Card(
+                        margin: const EdgeInsets.symmetric(
+                            horizontal: 16, vertical: 8),
+                        elevation: 3,
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10)),
+                        child: ListTile(
+                          contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 16, vertical: 10),
+                          leading: const CircleAvatar(
+                            backgroundColor: Colors.blueAccent,
+                            child: Icon(Icons.person, color: Colors.white),
+                          ),
+                          title: Text(
+                            name,
+                            style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 18,
+                                color: Colors.black87),
+                          ),
+                          subtitle: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const SizedBox(height: 4),
+                              Text('Email: $email',
+                                  style: const TextStyle(fontSize: 14)),
+                              Text('Departemen: $department',
+                                  style: const TextStyle(fontSize: 14)),
+                              Text('Role: ${role.toUpperCase()}',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w600,
+                                    color: role == 'admin'
+                                        ? Colors.red[700]
+                                        : Colors.blue[700],
+                                  )),
+                            ],
+                          ),
+                          trailing: PopupMenuButton<String>(
+                            onSelected: (String result) {
+                              if (result == 'edit') {
+                                _addEditUser(userToEdit: userDoc);
+                              } else if (result == 'delete') {
+                                _deleteUser(userDoc.id, name);
+                              }
+                            },
+                            itemBuilder: (BuildContext context) =>
+                                <PopupMenuEntry<String>>[
+                              const PopupMenuItem<String>(
+                                value: 'edit',
+                                child: Row(
+                                  children: [
+                                    Icon(Icons.edit, color: Colors.blue),
+                                    SizedBox(width: 8),
+                                    Text('Edit Data'),
+                                  ],
+                                ),
+                              ),
+                              const PopupMenuItem<String>(
+                                value: 'delete',
+                                child: Row(
+                                  children: [
+                                    Icon(Icons.delete, color: Colors.red),
+                                    SizedBox(width: 8),
+                                    Text('Hapus Pengguna'),
+                                  ],
+                                ),
+                              ),
+                            ],
+                            icon: const Icon(Icons.more_vert),
+                            tooltip: 'Opsi Lain',
+                          ),
+                          onTap: () {
+                            log('Detail user $name diklik');
+                          },
+                        ),
+                      );
+                    },
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+        if (_isProcessingFileOperation)
+          Container(
+            color: Colors.black.withOpacity(0.5),
+            child: Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const CircularProgressIndicator(),
+                  const SizedBox(height: 20),
+                  Text(
+                    _processingMessage,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      decoration: TextDecoration.none,
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  ElevatedButton(
+                    onPressed: _cancelImport,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.red,
+                      foregroundColor: Colors.white,
+                    ),
+                    child: const Text('Batalkan'),
                   ),
                 ],
               ),
             ),
           ),
-        ),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Expanded(
-                child: Text(
-                  'Daftar Pengguna Terdaftar:',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
-                  overflow: TextOverflow.ellipsis,
-                  maxLines: 1,
-                ),
-              ),
-              const SizedBox(width: 10),
-              ElevatedButton.icon(
-                onPressed: () => _addEditUser(),
-                icon: const Icon(Icons.person_add),
-                label: const Text('Tambah Pengguna'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.blueAccent,
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8)),
-                ),
-              ),
-              const SizedBox(width: 10),
-              IconButton(
-                icon: const Icon(Icons.more_vert),
-                onPressed: _showImportExportOptions,
-                tooltip: 'Opsi Import/Export',
-              ),
-            ],
-          ),
-        ),
-        Expanded(
-          child: StreamBuilder<QuerySnapshot>(
-            stream: _firestore.collection('users').orderBy('name').snapshots(),
-            builder: (context, snapshot) {
-              if (snapshot.hasError) {
-                return Center(child: Text('Error: ${snapshot.error}'));
-              }
-
-              if (snapshot.connectionState == ConnectionState.waiting) {
-                return const Center(child: CircularProgressIndicator());
-              }
-
-              if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-                return const Center(
-                    child: Text('Belum ada pengguna terdaftar.'));
-              }
-
-              List<DocumentSnapshot> allUsers = snapshot.data!.docs;
-
-              List<DocumentSnapshot> filteredUsers = allUsers.where((userDoc) {
-                final data = userDoc.data() as Map<String, dynamic>?;
-                if (data == null) return false;
-
-                final String lowerCaseQuery = _searchQuery.toLowerCase();
-                final String name = (data['name'] ?? '').toLowerCase();
-                final String email = (data['email'] ?? '').toLowerCase();
-                final String username = email.split('@')[0];
-                final String department =
-                    (data['department'] ?? '').toLowerCase();
-                final String role = (data['role'] ?? '').toLowerCase();
-
-                final bool matchesSearch = name.contains(lowerCaseQuery) ||
-                    username.contains(lowerCaseQuery) ||
-                    email.contains(lowerCaseQuery) ||
-                    department.contains(lowerCaseQuery) ||
-                    role.contains(lowerCaseQuery);
-
-                final bool matchesDepartment =
-                    _selectedDepartmentFilter == 'Semua Departemen' ||
-                        department
-                            .contains(_selectedDepartmentFilter!.toLowerCase());
-
-                final bool matchesRole = _selectedRoleFilter == 'Semua Role' ||
-                    role.contains(_selectedRoleFilter!.toLowerCase());
-
-                return matchesSearch && matchesDepartment && matchesRole;
-              }).toList();
-
-              if (filteredUsers.isEmpty &&
-                  (_searchQuery.isNotEmpty ||
-                      _selectedDepartmentFilter != 'Semua Departemen' ||
-                      _selectedRoleFilter != 'Semua Role')) {
-                return const Center(child: Text('Pengguna tidak ditemukan.'));
-              }
-              if (filteredUsers.isEmpty && _searchQuery.isEmpty) {
-                return const Center(
-                    child: Text('Belum ada pengguna terdaftar.'));
-              }
-
-              return ListView.builder(
-                itemCount: filteredUsers.length,
-                itemBuilder: (context, index) {
-                  final userDoc = filteredUsers[index];
-                  final userData = userDoc.data() as Map<String, dynamic>;
-
-                  final String name = userData['name'] ?? 'N/A';
-                  final String email = userData['email'] ?? 'N/A';
-                  final String department = userData['department'] ?? 'N/A';
-                  final String role = userData['role'] ?? 'N/A';
-
-                  return Card(
-                    margin:
-                        const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    elevation: 3,
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10)),
-                    child: ListTile(
-                      contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 16, vertical: 10),
-                      leading: const CircleAvatar(
-                        backgroundColor: Colors.blueAccent,
-                        child: Icon(Icons.person, color: Colors.white),
-                      ),
-                      title: Text(
-                        name,
-                        style: const TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 18,
-                            color: Colors.black87),
-                      ),
-                      subtitle: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const SizedBox(height: 4),
-                          Text('Email: $email',
-                              style: const TextStyle(fontSize: 14)),
-                          Text('Departemen: $department',
-                              style: const TextStyle(fontSize: 14)),
-                          Text('Role: ${role.toUpperCase()}',
-                              style: TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w600,
-                                color: role == 'admin'
-                                    ? Colors.red[700]
-                                    : Colors.blue[700],
-                              )),
-                        ],
-                      ),
-                      trailing: PopupMenuButton<String>(
-                        onSelected: (String result) {
-                          if (result == 'edit') {
-                            _addEditUser(userToEdit: userDoc);
-                          } else if (result == 'delete') {
-                            _deleteUser(userDoc.id, name);
-                          }
-                        },
-                        itemBuilder: (BuildContext context) =>
-                            <PopupMenuEntry<String>>[
-                          const PopupMenuItem<String>(
-                            value: 'edit',
-                            child: Row(
-                              children: [
-                                Icon(Icons.edit, color: Colors.blue),
-                                SizedBox(width: 8),
-                                Text('Edit Data'),
-                              ],
-                            ),
-                          ),
-                          const PopupMenuItem<String>(
-                            value: 'delete',
-                            child: Row(
-                              children: [
-                                Icon(Icons.delete, color: Colors.red),
-                                SizedBox(width: 8),
-                                Text('Hapus Pengguna'),
-                              ],
-                            ),
-                          ),
-                        ],
-                        icon: const Icon(Icons.more_vert),
-                        tooltip: 'Opsi Lain',
-                      ),
-                      onTap: () {
-                        log('Detail user $name diklik');
-                      },
-                    ),
-                  );
-                },
-              );
-            },
-          ),
-        ),
       ],
     );
   }
