@@ -29,10 +29,10 @@ class _UsersScreenState extends State<UsersScreen> {
   String _searchQuery = '';
   bool _isProcessingFileOperation = false;
   String _processingMessage = '';
-  bool _isImportCancelled = false; // <-- Variabel baru untuk pembatalan
+  bool _isImportCancelled = false;
 
   String? _selectedDepartmentFilter;
-  String? _selectedRoleFilter;
+  // Variabel _selectedRoleFilter dihapus
 
   Timer? _notificationTimer;
   final List<String> _departments = [
@@ -40,15 +40,20 @@ class _UsersScreenState extends State<UsersScreen> {
     'ENGINEERING',
     'FB PRODUCT',
     'FB SERVICE',
+    'FINANCE',
     'FRONT OFFICE',
     'HOUSEKEEPING',
     'HR',
     'IT',
+    'Marketing',
     'SALES',
     'SALES & MARKETING',
-    'SECURITY',
+    'Security',
   ];
-  final List<String> _roles = ['staff', 'admin'];
+  final List<String> _roles = [
+    'staff',
+    'admin'
+  ]; // Tetap dipertahankan untuk fungsi Tambah/Edit Pengguna
 
   static const String _fictitiousDomain = '@strata.com';
 
@@ -57,7 +62,7 @@ class _UsersScreenState extends State<UsersScreen> {
     super.initState();
     _searchController.addListener(_onSearchChanged);
     _selectedDepartmentFilter = 'Semua Departemen';
-    _selectedRoleFilter = 'Semua Role';
+    // Inisialisasi _selectedRoleFilter dihapus
   }
 
   @override
@@ -738,9 +743,9 @@ class _UsersScreenState extends State<UsersScreen> {
       setState(() {
         _isImportCancelled = true;
         _isProcessingFileOperation = false;
-        _showNotification('Pembatalan', 'Proses impor dibatalkan.',
-            isError: true);
       });
+      _showNotification('Pembatalan', 'Proses impor dibatalkan.',
+          isError: true); // <-- Tampilkan notifikasi
     }
   }
 
@@ -944,7 +949,7 @@ class _UsersScreenState extends State<UsersScreen> {
       'Semua Departemen',
       ..._departments
     ];
-    final List<String> roleFilterOptions = ['Semua Role', ..._roles];
+    // List roleFilterOptions dihapus
 
     return Stack(
       children: [
@@ -982,6 +987,7 @@ class _UsersScreenState extends State<UsersScreen> {
                       Row(
                         children: [
                           Expanded(
+                            // Filter Departemen mengambil seluruh lebar
                             child: DropdownButtonFormField<String>(
                               value: _selectedDepartmentFilter,
                               decoration: const InputDecoration(
@@ -989,11 +995,16 @@ class _UsersScreenState extends State<UsersScreen> {
                                 border: OutlineInputBorder(),
                                 isDense: true,
                                 contentPadding: EdgeInsets.symmetric(
-                                    horizontal: 12, vertical: 10),
+                                    horizontal: 8, vertical: 8),
                               ),
                               items: departmentFilterOptions
                                   .map((dep) => DropdownMenuItem(
-                                      value: dep, child: Text(dep)))
+                                      value: dep,
+                                      child: Text(
+                                        dep,
+                                        overflow: TextOverflow.ellipsis,
+                                        maxLines: 1,
+                                      )))
                                   .toList(),
                               onChanged: (value) {
                                 setState(() {
@@ -1002,29 +1013,7 @@ class _UsersScreenState extends State<UsersScreen> {
                               },
                             ),
                           ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: DropdownButtonFormField<String>(
-                              value: _selectedRoleFilter,
-                              decoration: const InputDecoration(
-                                labelText: 'Filter Role',
-                                border: OutlineInputBorder(),
-                                isDense: true,
-                                contentPadding: EdgeInsets.symmetric(
-                                    horizontal: 12, vertical: 10),
-                              ),
-                              items: roleFilterOptions
-                                  .map((role) => DropdownMenuItem(
-                                      value: role,
-                                      child: Text(role.toUpperCase())))
-                                  .toList(),
-                              onChanged: (value) {
-                                setState(() {
-                                  _selectedRoleFilter = value;
-                                });
-                              },
-                            ),
-                          ),
+                          // Dropdown untuk Filter Role dan SizedBox pemisah telah dihapus
                         ],
                       ),
                     ],
@@ -1116,17 +1105,14 @@ class _UsersScreenState extends State<UsersScreen> {
                         department
                             .contains(_selectedDepartmentFilter!.toLowerCase());
 
-                    final bool matchesRole =
-                        _selectedRoleFilter == 'Semua Role' ||
-                            role.contains(_selectedRoleFilter!.toLowerCase());
+                    // Pemeriksaan matchesRole dihapus
 
-                    return matchesSearch && matchesDepartment && matchesRole;
+                    return matchesSearch && matchesDepartment;
                   }).toList();
 
                   if (filteredUsers.isEmpty &&
                       (_searchQuery.isNotEmpty ||
-                          _selectedDepartmentFilter != 'Semua Departemen' ||
-                          _selectedRoleFilter != 'Semua Role')) {
+                          _selectedDepartmentFilter != 'Semua Departemen')) {
                     return const Center(
                         child: Text('Pengguna tidak ditemukan.'));
                   }

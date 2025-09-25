@@ -354,44 +354,51 @@ class _ScanBarcodeScreenState extends State<ScanBarcodeScreen> {
                 title: Text('Pilih Item dari Grup "$classification"'),
                 content: SizedBox(
                   width: double.maxFinite,
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      TextField(
-                        controller: searchController,
-                        decoration: const InputDecoration(
-                          labelText: 'Cari Item',
-                          border: OutlineInputBorder(),
-                          prefixIcon: Icon(Icons.search),
+                  // FIX: Batasi tinggi dialog agar content dapat di-scroll
+                  height: MediaQuery.of(context).size.height * 0.7,
+                  child: SingleChildScrollView(
+                    // FIX: Bungkus Column dengan SingleChildScrollView
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        TextField(
+                          controller: searchController,
+                          decoration: const InputDecoration(
+                            labelText: 'Cari Item',
+                            border: OutlineInputBorder(),
+                            prefixIcon: Icon(Icons.search),
+                          ),
+                          onChanged: (value) {
+                            setState(() {});
+                          },
                         ),
-                        onChanged: (value) {
-                          setState(() {});
-                        },
-                      ),
-                      const SizedBox(height: 10),
-                      if (currentSelectedItems.values.any((element) => element))
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text(
-                              'Item Terpilih:',
-                              style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 16,
+                        const SizedBox(height: 10),
+                        if (currentSelectedItems.values
+                            .any((element) => element))
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'Item Terpilih:',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 16,
+                                ),
                               ),
-                            ),
-                            ...allGroupItems
-                                .where((item) =>
-                                    currentSelectedItems[item.id] == true)
-                                .map((item) {
-                              return Text('- ${item.name}');
-                            }).toList(),
-                            const Divider(),
-                          ],
-                        ),
-                      Flexible(
-                        child: ListView.builder(
+                              ...allGroupItems
+                                  .where((item) =>
+                                      currentSelectedItems[item.id] == true)
+                                  .map((item) {
+                                return Text('- ${item.name}');
+                              }).toList(),
+                              const Divider(),
+                            ],
+                          ),
+                        // Hapus Flexible, biarkan ListView.builder memiliki shrinkWrap: true
+                        ListView.builder(
                           shrinkWrap: true,
+                          physics:
+                              const NeverScrollableScrollPhysics(), // Biarkan SingleChildScrollView yang menangani scroll
                           itemCount: filteredItems.length,
                           itemBuilder: (context, index) {
                             final item = filteredItems[index];
@@ -433,6 +440,10 @@ class _ScanBarcodeScreenState extends State<ScanBarcodeScreen> {
                                                 ),
                                                 keyboardType:
                                                     TextInputType.number,
+                                                onFieldSubmitted: (value) {
+                                                  FocusScope.of(context)
+                                                      .unfocus();
+                                                },
                                               )
                                             : TextFormField(
                                                 controller:
@@ -445,6 +456,12 @@ class _ScanBarcodeScreenState extends State<ScanBarcodeScreen> {
                                                   border: OutlineInputBorder(),
                                                 ),
                                                 maxLines: 3,
+                                                textInputAction:
+                                                    TextInputAction.done,
+                                                onFieldSubmitted: (value) {
+                                                  FocusScope.of(context)
+                                                      .unfocus();
+                                                },
                                               ),
                                       ],
                                     ),
@@ -453,8 +470,8 @@ class _ScanBarcodeScreenState extends State<ScanBarcodeScreen> {
                             );
                           },
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
                 actions: [
@@ -568,6 +585,10 @@ class _ScanBarcodeScreenState extends State<ScanBarcodeScreen> {
                     border: OutlineInputBorder(),
                   ),
                   maxLines: 3,
+                  textInputAction: TextInputAction.done,
+                  onFieldSubmitted: (value) {
+                    FocusScope.of(context).unfocus();
+                  },
                 ),
               ],
             ),
@@ -984,7 +1005,10 @@ class _ScanBarcodeScreenState extends State<ScanBarcodeScreen> {
                                   hintText: 'Contoh: Untuk P3K di ruang rapat',
                                 ),
                                 maxLines: 3,
+                                textInputAction: TextInputAction
+                                    .done, // Dibiarkan tetap done
                                 onFieldSubmitted: (value) {
+                                  // Memaksa keyboard untuk ditutup
                                   FocusScope.of(context).unfocus();
                                 },
                               ),
@@ -1027,6 +1051,7 @@ class _ScanBarcodeScreenState extends State<ScanBarcodeScreen> {
   }
 
   Widget _buildScanWindowOverlay(double width, double height) {
+    // ... (Kode ini tidak berubah dan tidak memiliki masalah overflow)
     return Stack(
       children: [
         Positioned.fill(
