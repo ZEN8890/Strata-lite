@@ -32,6 +32,10 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
   bool _isLoadingExport = false;
   bool _isLoadingDelete = false;
 
+  // >>> START: PERUBAHAN
+  StreamSubscription? _classificationSubscription;
+  // <<< END: PERUBAHAN
+
   DateTime? _selectedStartDate;
   DateTime? _selectedEndDate;
   TimeOfDay? _selectedStartTime;
@@ -60,6 +64,12 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
     _searchController.removeListener(_onSearchChanged);
     _searchController.dispose();
     _notificationTimer?.cancel();
+
+    // >>> START: PERUBAHAN
+    // Batalkan langganan stream saat widget dihapus
+    _classificationSubscription?.cancel();
+    // <<< END: PERUBAHAN
+
     super.dispose();
   }
 
@@ -127,46 +137,76 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
     });
   }
 
+  // >>> START: PERUBAHAN PADA FUNGSI _loadClassifications()
   Future<void> _loadClassifications() async {
+    // Batalkan langganan sebelumnya (jika ada)
+    _classificationSubscription?.cancel();
+
     setState(() {
       _isClassificationsLoading = true;
     });
+
     try {
-      QuerySnapshot logsSnapshot =
-          await _firestore.collection('log_entries').get();
-      Set<String> uniqueClassifications = {};
+      _classificationSubscription = _firestore
+          .collection('log_entries')
+          .snapshots() // Menggunakan snapshots() untuk real-time update
+          .listen((logsSnapshot) {
+        Set<String> uniqueClassifications = {};
 
-      for (var doc in logsSnapshot.docs) {
-        final data = doc.data() as Map<String, dynamic>;
-        final classification = data['itemClassification'];
-        if (classification is String && classification.isNotEmpty) {
-          uniqueClassifications.add(classification);
+        for (var doc in logsSnapshot.docs) {
+          final data = doc.data() as Map<String, dynamic>;
+          final classification = data['itemClassification'];
+          if (classification is String && classification.isNotEmpty) {
+            uniqueClassifications.add(classification);
+          }
         }
-      }
 
-      setState(() {
-        _dynamicClassifications = [
-          'Semua Klasifikasi',
-          ...uniqueClassifications.toList()..sort()
-        ];
-        _selectedClassification ??= _dynamicClassifications.first;
-        _isClassificationsLoading = false;
+        if (mounted) {
+          setState(() {
+            _dynamicClassifications = [
+              'Semua Klasifikasi',
+              ...uniqueClassifications.toList()..sort()
+            ];
+
+            // Memastikan klasifikasi yang dipilih saat ini masih ada, jika tidak, reset ke default
+            if (_selectedClassification != null &&
+                !_dynamicClassifications.contains(_selectedClassification)) {
+              _selectedClassification = 'Semua Klasifikasi';
+            } else {
+              _selectedClassification ??= _dynamicClassifications.first;
+            }
+
+            _isClassificationsLoading = false;
+          });
+          log('Dynamic classifications updated (Stream): $_dynamicClassifications');
+        }
+      }, onError: (e) {
+        log('Error loading classifications stream: $e');
+        if (mounted) {
+          setState(() {
+            _dynamicClassifications = ['Semua Klasifikasi'];
+            _selectedClassification = _dynamicClassifications.first;
+            _isClassificationsLoading = false;
+          });
+          _showNotification(
+            'Error',
+            'Gagal memuat daftar klasifikasi secara real-time.',
+            isError: true,
+          );
+        }
       });
-      log('Dynamic classifications loaded: $_dynamicClassifications');
     } catch (e) {
-      log('Error loading classifications: $e');
-      setState(() {
-        _dynamicClassifications = ['Semua Klasifikasi'];
-        _selectedClassification = _dynamicClassifications.first;
-        _isClassificationsLoading = false;
-      });
-      _showNotification(
-        'Error',
-        'Gagal memuat daftar klasifikasi.',
-        isError: true,
-      );
+      log('Initial error setting up classifications stream: $e');
+      if (mounted) {
+        setState(() {
+          _dynamicClassifications = ['Semua Klasifikasi'];
+          _selectedClassification = _dynamicClassifications.first;
+          _isClassificationsLoading = false;
+        });
+      }
     }
   }
+  // <<< END: PERUBAHAN PADA FUNGSI _loadClassifications()
 
   Future<void> _selectDate(BuildContext context,
       {required bool isStartDate}) async {
@@ -478,7 +518,7 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
       List<int>? fileBytes = excel.save();
       if (fileBytes != null) {
         final String fileName =
-            'Log_Inventaris_Strata_Lite_${DateTime.now().millisecondsSinceEpoch}.xlsx';
+            'Log_Inventaris_QR_Aid_${DateTime.now().millisecondsSinceEpoch}.xlsx';
 
         if (defaultTargetPlatform == TargetPlatform.windows ||
             defaultTargetPlatform == TargetPlatform.macOS ||
