@@ -7,7 +7,8 @@ import 'dart:developer';
 import 'package:intl/intl.dart';
 import 'dart:async';
 import 'package:another_flushbar/flushbar.dart';
-import 'package:excel/excel.dart';
+import 'package:excel/excel.dart'
+    as excel_lib; // Diberi prefix untuk mengatasi konflik TextSpan
 import 'package:path_provider/path_provider.dart';
 import 'dart:io';
 import 'package:permission_handler/permission_handler.dart';
@@ -32,9 +33,7 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
   bool _isLoadingExport = false;
   bool _isLoadingDelete = false;
 
-  // >>> START: PERUBAHAN
   StreamSubscription? _classificationSubscription;
-  // <<< END: PERUBAHAN
 
   DateTime? _selectedStartDate;
   DateTime? _selectedEndDate;
@@ -46,17 +45,17 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
   List<String> _dynamicClassifications = ['Semua Klasifikasi'];
   bool _isClassificationsLoading = true;
 
-  final GlobalKey _filterSectionKey = GlobalKey();
-  double _filterSectionHeight = 0;
+  // State untuk mengontrol tampilan/penyembunyian filter lanjutan
+  bool _showFilters = false;
 
   @override
   void initState() {
     super.initState();
     _searchController.addListener(_onSearchChanged);
     _loadClassifications();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _measureFilterSectionHeight();
-    });
+
+    // Set default selected classification
+    _selectedClassification = _dynamicClassifications.first;
   }
 
   @override
@@ -64,12 +63,7 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
     _searchController.removeListener(_onSearchChanged);
     _searchController.dispose();
     _notificationTimer?.cancel();
-
-    // >>> START: PERUBAHAN
-    // Batalkan langganan stream saat widget dihapus
     _classificationSubscription?.cancel();
-    // <<< END: PERUBAHAN
-
     super.dispose();
   }
 
@@ -79,17 +73,10 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
     });
   }
 
-  void _measureFilterSectionHeight() {
-    final RenderBox? renderBox =
-        _filterSectionKey.currentContext?.findRenderObject() as RenderBox?;
-    if (renderBox != null) {
-      if (_filterSectionHeight != renderBox.size.height) {
-        setState(() {
-          _filterSectionHeight = renderBox.size.height + 10.0;
-          log('Filter Section Height measured: $_filterSectionHeight');
-        });
-      }
-    }
+  void _toggleFilters() {
+    setState(() {
+      _showFilters = !_showFilters;
+    });
   }
 
   void _showNotification(
@@ -137,9 +124,7 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
     });
   }
 
-  // >>> START: PERUBAHAN PADA FUNGSI _loadClassifications()
   Future<void> _loadClassifications() async {
-    // Batalkan langganan sebelumnya (jika ada)
     _classificationSubscription?.cancel();
 
     setState(() {
@@ -149,7 +134,7 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
     try {
       _classificationSubscription = _firestore
           .collection('log_entries')
-          .snapshots() // Menggunakan snapshots() untuk real-time update
+          .snapshots()
           .listen((logsSnapshot) {
         Set<String> uniqueClassifications = {};
 
@@ -168,7 +153,6 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
               ...uniqueClassifications.toList()..sort()
             ];
 
-            // Memastikan klasifikasi yang dipilih saat ini masih ada, jika tidak, reset ke default
             if (_selectedClassification != null &&
                 !_dynamicClassifications.contains(_selectedClassification)) {
               _selectedClassification = 'Semua Klasifikasi';
@@ -206,7 +190,6 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
       }
     }
   }
-  // <<< END: PERUBAHAN PADA FUNGSI _loadClassifications()
 
   Future<void> _selectDate(BuildContext context,
       {required bool isStartDate}) async {
@@ -259,11 +242,53 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
       _selectedEndDate = null;
       _selectedStartTime = null;
       _selectedEndTime = null;
-      _selectedClassification = 'Semua Klasifikasi';
+      _selectedClassification = _dynamicClassifications.first;
       _selectedTransactionType = 'Semua';
     });
     _showNotification('Filter Direset', 'Semua filter telah dihapus.');
   }
+
+  // --- Fungsi Bantuan untuk UI ---
+
+  Widget _buildFilterTitle(String title) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8.0, top: 4.0),
+      child: Text(
+        title,
+        style: const TextStyle(
+            fontWeight: FontWeight.w600, fontSize: 16, color: Colors.black87),
+      ),
+    );
+  }
+
+  Widget _buildActionButton({
+    required String label,
+    required IconData icon,
+    required bool isLoading,
+    required Color color,
+    required VoidCallback onPressed,
+  }) {
+    return ElevatedButton.icon(
+      onPressed: isLoading ? null : onPressed,
+      icon: isLoading
+          ? const SizedBox(
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(
+                  color: Colors.white, strokeWidth: 2))
+          : Icon(icon),
+      label: Text(isLoading ? 'Memproses...' : label),
+      style: ElevatedButton.styleFrom(
+        backgroundColor: color,
+        foregroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        elevation: 4,
+      ),
+    );
+  }
+
+  // --- FUNGSI UTAMA LAINNYA ---
 
   Future<bool> _requestStoragePermission(BuildContext context) async {
     log('Requesting storage permission...');
@@ -379,24 +404,24 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
     });
 
     try {
-      var excel = Excel.createExcel();
+      var excel = excel_lib.Excel.createExcel();
       String defaultSheetName = excel.getDefaultSheet()!;
-      Sheet sheetObject = excel.sheets[defaultSheetName]!;
+      excel_lib.Sheet sheetObject = excel.sheets[defaultSheetName]!;
 
       for (int i = sheetObject.maxRows - 1; i >= 0; i--) {
         sheetObject.removeRow(i);
       }
 
       sheetObject.appendRow([
-        TextCellValue('Tipe Log'),
-        TextCellValue('Nama Barang'),
-        TextCellValue('Klasifikasi'),
-        TextCellValue('Kuantitas/Remarks'),
-        TextCellValue('Tanggal & Waktu'),
-        TextCellValue('Nama Staff'),
-        TextCellValue('Departemen'),
-        TextCellValue('Remarks Tambahan'),
-        TextCellValue('Sisa Stok'),
+        excel_lib.TextCellValue('Tipe Log'),
+        excel_lib.TextCellValue('Nama Barang'),
+        excel_lib.TextCellValue('Klasifikasi'),
+        excel_lib.TextCellValue('Kuantitas/Remarks'),
+        excel_lib.TextCellValue('Tanggal & Waktu'),
+        excel_lib.TextCellValue('Nama Staff'),
+        excel_lib.TextCellValue('Departemen'),
+        excel_lib.TextCellValue('Remarks Tambahan'),
+        excel_lib.TextCellValue('Sisa Stok'),
       ]);
 
       QuerySnapshot snapshot = await _firestore
@@ -498,15 +523,15 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
                 : 'Pengambilan';
 
         sheetObject.appendRow([
-          TextCellValue(logType),
-          TextCellValue(logEntry.itemName),
-          TextCellValue(logEntry.itemClassification ?? ''),
-          TextCellValue(logEntry.quantityOrRemark.toString()),
-          TextCellValue(formattedDateTime),
-          TextCellValue(logEntry.staffName),
-          TextCellValue(logEntry.staffDepartment),
-          TextCellValue(logEntry.remarks ?? ''),
-          TextCellValue(logEntry.remainingStock?.toString() ?? '-'),
+          excel_lib.TextCellValue(logType),
+          excel_lib.TextCellValue(logEntry.itemName),
+          excel_lib.TextCellValue(logEntry.itemClassification ?? ''),
+          excel_lib.TextCellValue(logEntry.quantityOrRemark.toString()),
+          excel_lib.TextCellValue(formattedDateTime),
+          excel_lib.TextCellValue(logEntry.staffName),
+          excel_lib.TextCellValue(logEntry.staffDepartment),
+          excel_lib.TextCellValue(logEntry.remarks ?? ''),
+          excel_lib.TextCellValue(logEntry.remainingStock?.toString() ?? '-'),
         ]);
       }
 
@@ -690,74 +715,91 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
       body: NestedScrollView(
         headerSliverBuilder: (BuildContext context, bool innerBoxIsScrolled) {
           return <Widget>[
+            // 1. Pinned Search Bar & Filter Toggle
             SliverAppBar(
               automaticallyImplyLeading: false,
-              expandedHeight: _filterSectionHeight > 0
-                  ? _filterSectionHeight + 20.0
-                  : 450.0,
-              floating: true,
               pinned: true,
+              floating: true,
               snap: true,
-              flexibleSpace: FlexibleSpaceBar(
-                background: SingleChildScrollView(
-                  physics: const NeverScrollableScrollPhysics(),
-                  child: Padding(
-                    key: _filterSectionKey,
-                    padding: const EdgeInsets.all(16.0),
-                    child: Card(
-                      margin: EdgeInsets.zero,
-                      elevation: 4,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
+              title: const Text('Riwayat Transaksi'), // Title
+              bottom: PreferredSize(
+                // KOREKSI: Menggunakan 57.0 untuk mencegah overflow 1.0 piksel
+                preferredSize: const Size.fromHeight(57.0),
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: _searchController,
+                          decoration: InputDecoration(
+                            hintText: 'Cari nama barang, staff, dll...',
+                            prefixIcon: const Icon(Icons.search, size: 20),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(30.0),
+                              borderSide: BorderSide.none,
+                            ),
+                            filled: true,
+                            fillColor: Colors.white,
+                            contentPadding: const EdgeInsets.symmetric(
+                                vertical: 0, horizontal: 10),
+                          ),
+                        ),
                       ),
-                      child: Padding(
-                        padding: const EdgeInsets.all(16.0),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Text(
-                              'Opsi Filter & Aksi:',
+                      const SizedBox(width: 10),
+                      IconButton(
+                        icon: Icon(
+                            _showFilters
+                                ? Icons.filter_alt_off
+                                : Icons.filter_alt,
+                            color: Theme.of(context).primaryColor),
+                        onPressed: _toggleFilters,
+                        tooltip: _showFilters
+                            ? 'Sembunyikan Filter Lanjutan'
+                            : 'Tampilkan Filter Lanjutan',
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+
+            // 2. Collapsible Filter Card
+            if (_showFilters)
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16.0, 8.0, 16.0, 8.0),
+                  child: Card(
+                    elevation: 4,
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12)),
+                    child: Padding(
+                      padding: const EdgeInsets.all(16.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Text('Filter Lanjutan:',
                               style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 20,
-                                color: Colors.blueAccent,
-                              ),
-                            ),
-                            const SizedBox(height: 15),
-                            TextField(
-                              controller: _searchController,
-                              decoration: InputDecoration(
-                                hintText:
-                                    'Cari log (nama barang, staff, departemen, klasifikasi)...',
-                                prefixIcon: const Icon(Icons.search),
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(8.0),
-                                  borderSide: BorderSide.none,
-                                ),
-                                filled: true,
-                                fillColor: Colors.grey[100],
-                                contentPadding: const EdgeInsets.symmetric(
-                                    vertical: 10, horizontal: 10),
-                              ),
-                            ),
-                            const SizedBox(height: 15),
-                            const Text('Filter Tanggal:',
-                                style: TextStyle(
-                                    fontWeight: FontWeight.bold, fontSize: 16)),
-                            const SizedBox(height: 10),
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: OutlinedButton.icon(
-                                    onPressed: () =>
-                                        _selectDate(context, isStartDate: true),
-                                    icon: const Icon(Icons.calendar_today),
-                                    label: Text(_selectedStartDate == null
-                                        ? 'Dari Tanggal'
-                                        : DateFormat('dd-MM-yyyy')
-                                            .format(_selectedStartDate!)),
-                                    style: OutlinedButton.styleFrom(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 18,
+                                  color: Colors.blueAccent)),
+                          const Divider(height: 15, thickness: 1),
+
+                          // --- DATE FILTERS ---
+                          _buildFilterTitle('Tanggal Transaksi'),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: OutlinedButton.icon(
+                                  onPressed: () =>
+                                      _selectDate(context, isStartDate: true),
+                                  icon: const Icon(Icons.calendar_today),
+                                  label: Text(_selectedStartDate == null
+                                      ? 'Dari Tanggal'
+                                      : DateFormat('dd-MM-yyyy')
+                                          .format(_selectedStartDate!)),
+                                  style: OutlinedButton.styleFrom(
                                       foregroundColor:
                                           _selectedStartDate != null
                                               ? Colors.blue[700]
@@ -770,21 +812,20 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
                                           borderRadius:
                                               BorderRadius.circular(8)),
                                       padding: const EdgeInsets.symmetric(
-                                          vertical: 12),
-                                    ),
-                                  ),
+                                          vertical: 12)),
                                 ),
-                                const SizedBox(width: 10),
-                                Expanded(
-                                  child: OutlinedButton.icon(
-                                    onPressed: () => _selectDate(context,
-                                        isStartDate: false),
-                                    icon: const Icon(Icons.calendar_today),
-                                    label: Text(_selectedEndDate == null
-                                        ? 'Sampai Tanggal'
-                                        : DateFormat('dd-MM-yyyy')
-                                            .format(_selectedEndDate!)),
-                                    style: OutlinedButton.styleFrom(
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: OutlinedButton.icon(
+                                  onPressed: () =>
+                                      _selectDate(context, isStartDate: false),
+                                  icon: const Icon(Icons.calendar_today),
+                                  label: Text(_selectedEndDate == null
+                                      ? 'Sampai Tanggal'
+                                      : DateFormat('dd-MM-yyyy')
+                                          .format(_selectedEndDate!)),
+                                  style: OutlinedButton.styleFrom(
                                       foregroundColor: _selectedEndDate != null
                                           ? Colors.blue[700]
                                           : Colors.grey[700],
@@ -796,28 +837,26 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
                                           borderRadius:
                                               BorderRadius.circular(8)),
                                       padding: const EdgeInsets.symmetric(
-                                          vertical: 12),
-                                    ),
-                                  ),
+                                          vertical: 12)),
                                 ),
-                              ],
-                            ),
-                            const SizedBox(height: 15),
-                            const Text('Filter Waktu:',
-                                style: TextStyle(
-                                    fontWeight: FontWeight.bold, fontSize: 16)),
-                            const SizedBox(height: 10),
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: OutlinedButton.icon(
-                                    onPressed: () =>
-                                        _selectTime(context, isStartTime: true),
-                                    icon: const Icon(Icons.access_time),
-                                    label: Text(_selectedStartTime == null
-                                        ? 'Dari Jam'
-                                        : _selectedStartTime!.format(context)),
-                                    style: OutlinedButton.styleFrom(
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 15),
+
+                          // --- TIME FILTERS ---
+                          _buildFilterTitle('Waktu Transaksi'),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: OutlinedButton.icon(
+                                  onPressed: () =>
+                                      _selectTime(context, isStartTime: true),
+                                  icon: const Icon(Icons.access_time),
+                                  label: Text(_selectedStartTime == null
+                                      ? 'Dari Jam'
+                                      : _selectedStartTime!.format(context)),
+                                  style: OutlinedButton.styleFrom(
                                       foregroundColor:
                                           _selectedStartTime != null
                                               ? Colors.blue[700]
@@ -830,20 +869,19 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
                                           borderRadius:
                                               BorderRadius.circular(8)),
                                       padding: const EdgeInsets.symmetric(
-                                          vertical: 12),
-                                    ),
-                                  ),
+                                          vertical: 12)),
                                 ),
-                                const SizedBox(width: 10),
-                                Expanded(
-                                  child: OutlinedButton.icon(
-                                    onPressed: () => _selectTime(context,
-                                        isStartTime: false),
-                                    icon: const Icon(Icons.access_time),
-                                    label: Text(_selectedEndTime == null
-                                        ? 'Sampai Jam'
-                                        : _selectedEndTime!.format(context)),
-                                    style: OutlinedButton.styleFrom(
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: OutlinedButton.icon(
+                                  onPressed: () =>
+                                      _selectTime(context, isStartTime: false),
+                                  icon: const Icon(Icons.access_time),
+                                  label: Text(_selectedEndTime == null
+                                      ? 'Sampai Jam'
+                                      : _selectedEndTime!.format(context)),
+                                  style: OutlinedButton.styleFrom(
                                       foregroundColor: _selectedEndTime != null
                                           ? Colors.blue[700]
                                           : Colors.grey[700],
@@ -855,540 +893,444 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
                                           borderRadius:
                                               BorderRadius.circular(8)),
                                       padding: const EdgeInsets.symmetric(
-                                          vertical: 12),
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 15),
-                            const Text('Filter Klasifikasi:',
-                                style: TextStyle(
-                                    fontWeight: FontWeight.bold, fontSize: 16)),
-                            const SizedBox(height: 10),
-                            DropdownButtonFormField<String>(
-                              value: _selectedClassification,
-                              decoration: InputDecoration(
-                                labelText: 'Pilih Klasifikasi',
-                                border: const OutlineInputBorder(),
-                                prefixIcon: const Icon(Icons.category),
-                                contentPadding: const EdgeInsets.symmetric(
-                                    horizontal: 10, vertical: 12),
-                                enabledBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(8),
-                                  borderSide: BorderSide(
-                                      color: _selectedClassification != null &&
-                                              _selectedClassification !=
-                                                  'Semua Klasifikasi'
-                                          ? Colors.blue[700]!
-                                          : Colors.grey[400]!),
-                                ),
-                                focusedBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(8),
-                                  borderSide: BorderSide(
-                                      color: Colors.blue[700]!, width: 2),
+                                          vertical: 12)),
                                 ),
                               ),
-                              items: _dynamicClassifications
-                                  .map((String classification) {
-                                return DropdownMenuItem<String>(
-                                  value: classification,
-                                  child: Text(classification),
-                                );
-                              }).toList(),
-                              onChanged: _isClassificationsLoading
-                                  ? null
-                                  : (String? newValue) {
-                                      setState(() {
-                                        _selectedClassification =
-                                            newValue == 'Semua Klasifikasi'
-                                                ? null
-                                                : newValue;
-                                      });
-                                    },
+                            ],
+                          ),
+                          const SizedBox(height: 15),
+
+                          // --- CLASSIFICATION FILTER ---
+                          _buildFilterTitle('Klasifikasi Barang'),
+                          DropdownButtonFormField<String>(
+                            value: _selectedClassification,
+                            decoration: InputDecoration(
+                              labelText: 'Pilih Klasifikasi',
+                              border: const OutlineInputBorder(
+                                  borderRadius:
+                                      BorderRadius.all(Radius.circular(8))),
+                              prefixIcon: const Icon(Icons.category),
+                              contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 10, vertical: 12),
                             ),
-                            const SizedBox(height: 15),
-                            const Text('Filter Tipe Transaksi:',
-                                style: TextStyle(
-                                    fontWeight: FontWeight.bold, fontSize: 16)),
-                            const SizedBox(height: 10),
-                            DropdownButtonFormField<String>(
-                              value: _selectedTransactionType,
-                              decoration: InputDecoration(
-                                labelText: 'Pilih Tipe Transaksi',
-                                border: const OutlineInputBorder(),
-                                prefixIcon: const Icon(Icons.swap_vert),
-                                contentPadding: const EdgeInsets.symmetric(
-                                    horizontal: 10, vertical: 12),
-                                enabledBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(8),
-                                  borderSide: BorderSide(
-                                      color: _selectedTransactionType != 'Semua'
-                                          ? Theme.of(context).primaryColor
-                                          : Colors.grey[400]!),
-                                ),
-                                focusedBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(8),
-                                  borderSide: BorderSide(
-                                      color: Theme.of(context).primaryColor,
-                                      width: 2),
-                                ),
-                              ),
-                              items: ['Semua', 'Penambahan', 'Pengambilan']
-                                  .map((String value) {
-                                return DropdownMenuItem<String>(
-                                  value: value,
-                                  child: Text(value),
-                                );
-                              }).toList(),
-                              onChanged: (String? newValue) {
-                                if (newValue != null) {
-                                  setState(() {
-                                    _selectedTransactionType = newValue;
-                                  });
-                                }
-                              },
+                            items: _dynamicClassifications
+                                .map((String classification) {
+                              return DropdownMenuItem<String>(
+                                value: classification,
+                                child: Text(classification),
+                              );
+                            }).toList(),
+                            onChanged: _isClassificationsLoading
+                                ? null
+                                : (String? newValue) {
+                                    setState(() {
+                                      _selectedClassification = newValue;
+                                    });
+                                  },
+                          ),
+
+                          // --- TRANSACTION TYPE FILTER ---
+                          const SizedBox(height: 15),
+                          _buildFilterTitle('Tipe Transaksi'),
+                          DropdownButtonFormField<String>(
+                            value: _selectedTransactionType,
+                            decoration: InputDecoration(
+                              labelText: 'Pilih Tipe Transaksi',
+                              border: const OutlineInputBorder(
+                                  borderRadius:
+                                      BorderRadius.all(Radius.circular(8))),
+                              prefixIcon: const Icon(Icons.swap_vert),
+                              contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 10, vertical: 12),
                             ),
-                            if (_isClassificationsLoading)
-                              const Padding(
-                                padding: EdgeInsets.only(top: 8.0),
-                                child: LinearProgressIndicator(),
-                              ),
-                            const SizedBox(height: 15),
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceAround,
-                              children: [
-                                Expanded(
-                                  child: ElevatedButton(
-                                    onPressed: _clearFilters,
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: Colors.orange,
-                                      foregroundColor: Colors.white,
-                                      shape: RoundedRectangleBorder(
-                                          borderRadius:
-                                              BorderRadius.circular(8)),
-                                      padding: const EdgeInsets.symmetric(
-                                          vertical: 12),
-                                    ),
-                                    child: const Text('Reset Filter'),
-                                  ),
-                                ),
-                                const SizedBox(width: 10),
-                                Expanded(
-                                  child: ElevatedButton.icon(
-                                    onPressed: _isLoadingExport
-                                        ? null
-                                        : () => _exportLogsToExcel(context),
-                                    icon: _isLoadingExport
-                                        ? const SizedBox(
-                                            width: 20,
-                                            height: 20,
-                                            child: CircularProgressIndicator(
-                                                color: Colors.white,
-                                                strokeWidth: 2))
-                                        : const Icon(Icons.download),
-                                    label: Text(_isLoadingExport
-                                        ? 'Mengekspor...'
-                                        : 'Ekspor Log'),
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: Colors.green,
-                                      foregroundColor: Colors.white,
-                                      shape: RoundedRectangleBorder(
-                                          borderRadius:
-                                              BorderRadius.circular(8)),
-                                      padding: const EdgeInsets.symmetric(
-                                          vertical: 12),
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(width: 10),
-                                Expanded(
-                                  child: ElevatedButton.icon(
-                                    onPressed: _isLoadingDelete
-                                        ? null
-                                        : _clearLogsByDateRange,
-                                    icon: _isLoadingDelete
-                                        ? const SizedBox(
-                                            width: 20,
-                                            height: 20,
-                                            child: CircularProgressIndicator(
-                                                color: Colors.white,
-                                                strokeWidth: 2))
-                                        : const Icon(Icons.delete_forever),
-                                    label: Text(_isLoadingDelete
-                                        ? 'Menghapus...'
-                                        : 'Hapus Log'),
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: Colors.red,
-                                      foregroundColor: Colors.white,
-                                      shape: RoundedRectangleBorder(
-                                          borderRadius:
-                                              BorderRadius.circular(8)),
-                                      padding: const EdgeInsets.symmetric(
-                                          vertical: 12),
-                                    ),
-                                  ),
-                                ),
-                              ],
+                            items: ['Semua', 'Penambahan', 'Pengambilan']
+                                .map((String value) {
+                              return DropdownMenuItem<String>(
+                                value: value,
+                                child: Text(value),
+                              );
+                            }).toList(),
+                            onChanged: (String? newValue) {
+                              if (newValue != null) {
+                                setState(() {
+                                  _selectedTransactionType = newValue;
+                                });
+                              }
+                            },
+                          ),
+
+                          if (_isClassificationsLoading)
+                            const Padding(
+                              padding: EdgeInsets.only(top: 8.0),
+                              child: LinearProgressIndicator(),
                             ),
-                          ],
-                        ),
+
+                          // --- RESET BUTTON (DIPINDAH KE DALAM CARD) ---
+                          const SizedBox(height: 20),
+                          ElevatedButton(
+                              onPressed: _clearFilters,
+                              style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.orange,
+                                  foregroundColor: Colors.white,
+                                  shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(8)),
+                                  padding:
+                                      const EdgeInsets.symmetric(vertical: 12)),
+                              child: const Center(child: Text('Reset Filter'))),
+                        ],
                       ),
                     ),
                   ),
                 ),
               ),
-            ),
-          ];
-        },
-        body: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 16.0),
-              child: Text(
-                'Riwayat Pengambilan Barang:',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
-              ),
-            ),
-            const SizedBox(height: 10),
-            Expanded(
+
+            // 3. Action Buttons (Export/Delete) - Selalu terlihat/scrollable
+            SliverToBoxAdapter(
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                child: StreamBuilder<QuerySnapshot>(
-                  stream: query.snapshots(),
-                  builder: (context, snapshot) {
-                    if (snapshot.hasError) {
-                      return Center(child: Text('Error: ${snapshot.error}'));
-                    }
-
-                    if (snapshot.connectionState == ConnectionState.waiting) {
-                      return const Center(child: CircularProgressIndicator());
-                    }
-
-                    List<LogEntry> allLogs = snapshot.data!.docs.map((doc) {
-                      return LogEntry.fromFirestore(
-                          doc.data() as Map<String, dynamic>, doc.id);
-                    }).toList();
-
-                    List<LogEntry> filteredLogs = allLogs.where((logEntry) {
-                      final String lowerCaseQuery = _searchQuery.toLowerCase();
-                      bool matchesSearch = logEntry.itemName
-                              .toLowerCase()
-                              .contains(lowerCaseQuery) ||
-                          logEntry.staffName
-                              .toLowerCase()
-                              .contains(lowerCaseQuery) ||
-                          logEntry.staffDepartment
-                              .toLowerCase()
-                              .contains(lowerCaseQuery) ||
-                          (logEntry.itemClassification
-                                  ?.toLowerCase()
-                                  .contains(lowerCaseQuery) ??
-                              false) ||
-                          (logEntry.remarks
-                                  ?.toLowerCase()
-                                  .contains(lowerCaseQuery) ??
-                              false);
-
-                      if (!matchesSearch) return false;
-
-                      if (_selectedStartTime != null) {
-                        DateTime logTime = logEntry.timestamp;
-                        TimeOfDay entryTime = TimeOfDay(
-                            hour: logTime.hour, minute: logTime.minute);
-                        int startMinutes = _selectedStartTime!.hour * 60 +
-                            _selectedStartTime!.minute;
-                        int entryMinutes =
-                            entryTime.hour * 60 + entryTime.minute;
-                        if (entryMinutes < startMinutes) {
-                          return false;
-                        }
-                      }
-                      if (_selectedEndTime != null) {
-                        DateTime logTime = logEntry.timestamp;
-                        TimeOfDay entryTime = TimeOfDay(
-                            hour: logTime.hour, minute: logTime.minute);
-                        int endMinutes = _selectedEndTime!.hour * 60 +
-                            _selectedEndTime!.minute;
-                        int entryMinutes =
-                            entryTime.hour * 60 + entryTime.minute;
-                        if (entryMinutes > endMinutes) {
-                          return false;
-                        }
-                      }
-                      if (_selectedStartDate != null) {
-                        DateTime logDate = DateTime(logEntry.timestamp.year,
-                            logEntry.timestamp.month, logEntry.timestamp.day);
-                        DateTime startDate = DateTime(_selectedStartDate!.year,
-                            _selectedStartDate!.month, _selectedStartDate!.day);
-                        if (logDate.isBefore(startDate)) return false;
-                      }
-                      if (_selectedEndDate != null) {
-                        DateTime logDate = DateTime(logEntry.timestamp.year,
-                            logEntry.timestamp.month, logEntry.timestamp.day);
-                        DateTime endDate = DateTime(_selectedEndDate!.year,
-                            _selectedEndDate!.month, _selectedEndDate!.day);
-                        if (logDate.isAfter(endDate)) return false;
-                      }
-
-                      if (_selectedClassification != null &&
-                          _selectedClassification != 'Semua Klasifikasi') {
-                        if (logEntry.itemClassification !=
-                            _selectedClassification) return false;
-                      }
-
-                      // Logika filter tipe transaksi
-                      bool isAdding = logEntry.quantityOrRemark is int &&
-                          logEntry.quantityOrRemark > 0;
-                      bool isTaking = logEntry.quantityOrRemark is int &&
-                          logEntry.quantityOrRemark < 0;
-
-                      if (_selectedTransactionType == 'Penambahan' &&
-                          !isAdding) {
-                        return false;
-                      }
-                      if (_selectedTransactionType == 'Pengambilan' &&
-                          !isTaking) {
-                        return false;
-                      }
-
-                      return true;
-                    }).toList();
-
-                    if (filteredLogs.isEmpty) {
-                      bool isAnyFilterActive = _searchQuery.isNotEmpty ||
-                          _selectedStartDate != null ||
-                          _selectedEndDate != null ||
-                          _selectedTransactionType != 'Semua' ||
-                          (_selectedClassification != null &&
-                              _selectedClassification != 'Semua Klasifikasi');
-
-                      if (isAnyFilterActive) {
-                        return const Center(
-                          child: Text(
-                            'Tidak ada log yang ditemukan dengan kriteria pencarian ini.',
-                          ),
-                        );
-                      } else {
-                        return const Center(
-                          child: Text(
-                            'Belum ada riwayat pengambilan barang.',
-                          ),
-                        );
-                      }
-                    }
-
-                    return ListView.builder(
-                      itemCount: filteredLogs.length,
-                      itemBuilder: (context, index) {
-                        final logEntry = filteredLogs[index];
-                        String formattedDateTime =
-                            '${DateFormat('dd-MM-yyyy').format(logEntry.timestamp)} '
-                            '${DateFormat('HH:mm:ss').format(logEntry.timestamp)}';
-
-                        bool isAdding = logEntry.quantityOrRemark is int &&
-                            logEntry.quantityOrRemark > 0;
-                        Color logColor =
-                            isAdding ? Colors.green[50]! : Colors.red[50]!;
-                        Color logBorderColor =
-                            isAdding ? Colors.green : Colors.red;
-                        String logTitle =
-                            isAdding ? 'Penambahan Stok' : 'Pengambilan Stok';
-                        IconData logIcon = isAdding
-                            ? Icons.add_box_outlined
-                            : Icons.remove_circle_outline;
-
-                        String quantityText;
-                        if (logEntry.quantityOrRemark is int) {
-                          quantityText =
-                              logEntry.quantityOrRemark.abs().toString();
-                        } else {
-                          quantityText = logEntry.quantityOrRemark.toString();
-                        }
-
-                        String stockTextBefore = 'N/A';
-                        if (logEntry.remainingStock != null &&
-                            logEntry.quantityOrRemark is int) {
-                          int stockAfter = logEntry.remainingStock as int;
-                          int quantityChange = logEntry.quantityOrRemark as int;
-                          int stockBefore = stockAfter - quantityChange;
-                          stockTextBefore = stockBefore.toString();
-                        }
-
-                        String stockTextAfter = 'N/A';
-                        Color stockColor = Colors.grey;
-                        if (logEntry.remainingStock != null) {
-                          stockTextAfter = logEntry.remainingStock.toString();
-                          stockColor = (logEntry.remainingStock == 0)
-                              ? Colors.red
-                              : Colors.green[800]!;
-                        } else {
-                          stockTextAfter = 'Tidak Bisa Dihitung';
-                          stockColor = Colors.blueGrey;
-                        }
-
-                        String classificationText =
-                            logEntry.itemClassification != null &&
-                                    logEntry.itemClassification!.isNotEmpty
-                                ? logEntry.itemClassification!
-                                : 'Tidak Ada Klasifikasi';
-
-                        return Card(
-                          margin: const EdgeInsets.symmetric(
-                              horizontal: 0, vertical: 10.0),
-                          elevation: 8,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(15),
-                            side: BorderSide(
-                                color: logBorderColor.withOpacity(0.5),
-                                width: 1.5),
-                          ),
-                          color: logColor,
-                          child: Padding(
-                            padding: const EdgeInsets.all(18.0),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  children: [
-                                    Icon(logIcon,
-                                        size: 28, color: logBorderColor),
-                                    const SizedBox(width: 8),
-                                    Text(
-                                      logTitle,
-                                      style: TextStyle(
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 18,
-                                          color: logBorderColor),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 10),
-                                Text(
-                                  'Nama Barang: ${logEntry.itemName}',
-                                  style: TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 18,
-                                      color: Theme.of(context).primaryColor),
-                                ),
-                                const SizedBox(height: 10),
-                                Row(
-                                  children: [
-                                    const Icon(Icons.category,
-                                        size: 20, color: Colors.blueGrey),
-                                    const SizedBox(width: 10),
-                                    Text('Klasifikasi: $classificationText',
-                                        style: TextStyle(
-                                            fontSize: 16,
-                                            color: Colors.blueGrey[700])),
-                                  ],
-                                ),
-                                const SizedBox(height: 6),
-                                Row(
-                                  children: [
-                                    logEntry.quantityOrRemark is String
-                                        ? const Icon(Icons.notes,
-                                            size: 20, color: Colors.blueGrey)
-                                        : const Icon(
-                                            Icons.production_quantity_limits,
-                                            size: 20,
-                                            color: Colors.blueGrey),
-                                    const SizedBox(width: 10),
-                                    Text(
-                                      'Kuantitas/Remarks: $quantityText',
-                                      style: TextStyle(
-                                          fontSize: 16,
-                                          color: Colors.blueGrey[700]),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 6),
-                                Padding(
-                                  padding: const EdgeInsets.only(top: 4.0),
-                                  child: Row(
-                                    children: [
-                                      const Icon(Icons.inventory_2,
-                                          size: 20, color: Colors.blueGrey),
-                                      const SizedBox(width: 10),
-                                      Text(
-                                          'Sisa Stok: $stockTextBefore -> $stockTextAfter',
-                                          style: TextStyle(
-                                              fontSize: 16,
-                                              color: stockColor,
-                                              fontWeight: FontWeight.bold)),
-                                    ],
-                                  ),
-                                ),
-                                const SizedBox(height: 6),
-                                Row(
-                                  children: [
-                                    const Icon(Icons.access_time,
-                                        size: 20, color: Colors.blueGrey),
-                                    const SizedBox(width: 10),
-                                    Text(
-                                      'Tanggal & Waktu: $formattedDateTime',
-                                      style: TextStyle(
-                                          fontSize: 16,
-                                          color: Colors.blueGrey[700]),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 6),
-                                Row(
-                                  children: [
-                                    const Icon(Icons.person,
-                                        size: 20, color: Colors.blueGrey),
-                                    const SizedBox(width: 10),
-                                    Expanded(
-                                      child: Text(
-                                        'Staff: ${logEntry.staffName} (${logEntry.staffDepartment})',
-                                        style: TextStyle(
-                                            fontSize: 16,
-                                            color: Colors.blueGrey[700]),
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                if (logEntry.remarks != null &&
-                                    logEntry.remarks!.isNotEmpty)
-                                  Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      const SizedBox(height: 10),
-                                      Row(
-                                        children: [
-                                          const Icon(Icons.info_outline,
-                                              size: 20, color: Colors.blueGrey),
-                                          const SizedBox(width: 10),
-                                          Expanded(
-                                            child: Text(
-                                              'Remarks Tambahan: ${logEntry.remarks}',
-                                              style: TextStyle(
-                                                  fontStyle: FontStyle.italic,
-                                                  fontSize: 15,
-                                                  color: Colors.blueGrey[600]),
-                                              overflow: TextOverflow.visible,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ],
-                                  ),
-                              ],
-                            ),
-                          ),
-                        );
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Expanded(
+                        child: _buildActionButton(
+                      label: 'Ekspor Log',
+                      icon: Icons.download,
+                      isLoading: _isLoadingExport,
+                      color: Colors.green,
+                      onPressed: () {
+                        if (!context.mounted) return;
+                        _exportLogsToExcel(context);
                       },
-                    );
-                  },
+                    )),
+                    const SizedBox(width: 10),
+                    Expanded(
+                        child: _buildActionButton(
+                      label: 'Hapus Log',
+                      icon: Icons.delete_forever,
+                      isLoading: _isLoadingDelete,
+                      color: Colors.red,
+                      onPressed: _clearLogsByDateRange,
+                    )),
+                  ],
                 ),
               ),
             ),
-          ],
+
+            // 4. Log List Title (Header untuk daftar log)
+            const SliverToBoxAdapter(
+              child: Padding(
+                padding: EdgeInsets.fromLTRB(16.0, 16.0, 16.0, 10.0),
+                child: Text(
+                  'Riwayat Pengambilan Barang:',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+                ),
+              ),
+            ),
+          ];
+        },
+
+        // Body (Daftar Log)
+        body: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16.0),
+          child: StreamBuilder<QuerySnapshot>(
+            stream: query.snapshots(),
+            builder: (context, snapshot) {
+              if (snapshot.hasError) {
+                return Center(child: Text('Error: ${snapshot.error}'));
+              }
+
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator());
+              }
+
+              List<LogEntry> allLogs = snapshot.data!.docs.map((doc) {
+                return LogEntry.fromFirestore(
+                    doc.data() as Map<String, dynamic>, doc.id);
+              }).toList();
+
+              List<LogEntry> filteredLogs = allLogs.where((logEntry) {
+                // Logika filtering
+                final String lowerCaseQuery = _searchQuery.toLowerCase();
+                bool matchesSearch = logEntry.itemName
+                        .toLowerCase()
+                        .contains(lowerCaseQuery) ||
+                    logEntry.staffName.toLowerCase().contains(lowerCaseQuery) ||
+                    logEntry.staffDepartment
+                        .toLowerCase()
+                        .contains(lowerCaseQuery) ||
+                    (logEntry.itemClassification
+                            ?.toLowerCase()
+                            .contains(lowerCaseQuery) ??
+                        false) ||
+                    (logEntry.remarks?.toLowerCase().contains(lowerCaseQuery) ??
+                        false);
+
+                if (!matchesSearch) return false;
+
+                if (_selectedStartTime != null) {
+                  DateTime logTime = logEntry.timestamp;
+                  TimeOfDay entryTime =
+                      TimeOfDay(hour: logTime.hour, minute: logTime.minute);
+                  int startMinutes = _selectedStartTime!.hour * 60 +
+                      _selectedStartTime!.minute;
+                  int entryMinutes = entryTime.hour * 60 + entryTime.minute;
+                  if (entryMinutes < startMinutes) {
+                    return false;
+                  }
+                }
+                if (_selectedEndTime != null) {
+                  DateTime logTime = logEntry.timestamp;
+                  TimeOfDay entryTime =
+                      TimeOfDay(hour: logTime.hour, minute: logTime.minute);
+                  int endMinutes =
+                      _selectedEndTime!.hour * 60 + _selectedEndTime!.minute;
+                  int entryMinutes = entryTime.hour * 60 + entryTime.minute;
+                  if (entryMinutes > endMinutes) {
+                    return false;
+                  }
+                }
+                if (_selectedStartDate != null) {
+                  DateTime logDate = DateTime(logEntry.timestamp.year,
+                      logEntry.timestamp.month, logEntry.timestamp.day);
+                  DateTime startDate = DateTime(_selectedStartDate!.year,
+                      _selectedStartDate!.month, _selectedStartDate!.day);
+                  if (logDate.isBefore(startDate)) return false;
+                }
+                if (_selectedEndDate != null) {
+                  DateTime logDate = DateTime(logEntry.timestamp.year,
+                      logEntry.timestamp.month, logEntry.timestamp.day);
+                  DateTime endDate = DateTime(_selectedEndDate!.year,
+                      _selectedEndDate!.month, _selectedEndDate!.day);
+                  if (logDate.isAfter(endDate)) return false;
+                }
+
+                if (_selectedClassification != null &&
+                    _selectedClassification != 'Semua Klasifikasi') {
+                  if (logEntry.itemClassification != _selectedClassification)
+                    return false;
+                }
+
+                bool isAdding = logEntry.quantityOrRemark is int &&
+                    logEntry.quantityOrRemark > 0;
+                bool isTaking = logEntry.quantityOrRemark is int &&
+                    logEntry.quantityOrRemark < 0;
+
+                if (_selectedTransactionType == 'Penambahan' && !isAdding) {
+                  return false;
+                }
+                if (_selectedTransactionType == 'Pengambilan' && !isTaking) {
+                  return false;
+                }
+
+                return true;
+              }).toList();
+
+              if (filteredLogs.isEmpty) {
+                bool isAnyFilterActive = _searchQuery.isNotEmpty ||
+                    _selectedStartDate != null ||
+                    _selectedEndDate != null ||
+                    _selectedTransactionType != 'Semua' ||
+                    (_selectedClassification != null &&
+                        _selectedClassification != 'Semua Klasifikasi');
+
+                if (isAnyFilterActive) {
+                  return const Center(
+                    child: Text(
+                      'Tidak ada log yang ditemukan dengan kriteria pencarian ini.',
+                    ),
+                  );
+                } else {
+                  return const Center(
+                    child: Text(
+                      'Belum ada riwayat pengambilan barang.',
+                    ),
+                  );
+                }
+              }
+
+              // List View yang menampilkan kartu log yang lebih rapi
+              return ListView.builder(
+                padding: const EdgeInsets.only(bottom: 16.0),
+                itemCount: filteredLogs.length,
+                itemBuilder: (context, index) {
+                  final logEntry = filteredLogs[index];
+                  String formattedDateTime =
+                      '${DateFormat('dd-MM-yyyy').format(logEntry.timestamp)} '
+                      '${DateFormat('HH:mm:ss').format(logEntry.timestamp)}';
+
+                  bool isAdding = logEntry.quantityOrRemark is int &&
+                      logEntry.quantityOrRemark > 0;
+                  Color logColor = isAdding ? Colors.green : Colors.red;
+
+                  String logTitle = isAdding ? 'Penambahan' : 'Pengambilan';
+                  IconData logIcon =
+                      isAdding ? Icons.add_circle : Icons.remove_circle;
+
+                  String quantityText;
+                  if (logEntry.quantityOrRemark is int) {
+                    quantityText = logEntry.quantityOrRemark.abs().toString();
+                  } else {
+                    quantityText = logEntry.quantityOrRemark.toString();
+                  }
+
+                  String stockTextBefore = 'N/A';
+                  if (logEntry.remainingStock != null &&
+                      logEntry.quantityOrRemark is int) {
+                    int stockAfter = logEntry.remainingStock as int;
+                    int quantityChange = logEntry.quantityOrRemark as int;
+                    int stockBefore = stockAfter - quantityChange;
+                    stockTextBefore = stockBefore.toString();
+                  }
+
+                  String stockTextAfter =
+                      logEntry.remainingStock?.toString() ?? 'N/A';
+                  Color stockColor = (logEntry.remainingStock == 0)
+                      ? Colors.red
+                      : Colors.green[800]!;
+
+                  String classificationText =
+                      logEntry.itemClassification != null &&
+                              logEntry.itemClassification!.isNotEmpty
+                          ? logEntry.itemClassification!
+                          : 'Tidak Ada';
+
+                  // --- DESAIN KARTU LOG BARU ---
+                  return Card(
+                    margin: const EdgeInsets.only(bottom: 15.0),
+                    elevation: 4,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(15),
+                      side: BorderSide(
+                          color: logColor.withOpacity(0.5), width: 1.5),
+                    ),
+                    color: Colors.white,
+                    child: ListTile(
+                      contentPadding: const EdgeInsets.all(16.0),
+                      leading: CircleAvatar(
+                        backgroundColor: logColor.withOpacity(0.1),
+                        child: Icon(logIcon, color: logColor, size: 28),
+                      ),
+                      title: Text(
+                        logEntry.itemName,
+                        style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 18,
+                            color: Theme.of(context).primaryColor),
+                      ),
+                      subtitle: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const SizedBox(height: 4),
+                          Text('Tipe Log: $logTitle',
+                              style: TextStyle(
+                                  color: logColor,
+                                  fontWeight: FontWeight.w600)),
+                          const SizedBox(height: 8),
+                          _buildLogDetailRow(Icons.category, 'Klasifikasi',
+                              classificationText),
+                          _buildLogDetailRow(
+                              Icons.access_time, 'Waktu', formattedDateTime),
+
+                          // PERUBAHAN: Menggabungkan Staff dan Departemen
+                          _buildLogDetailRow(Icons.person, 'Staff',
+                              '${logEntry.staffName} (${logEntry.staffDepartment})'),
+
+                          // Detail Kuantitas / Remarks
+                          const SizedBox(height: 8),
+                          _buildLogDetailRow(
+                              logEntry.quantityOrRemark is String
+                                  ? Icons.notes
+                                  : Icons.production_quantity_limits,
+                              logEntry.quantityOrRemark is String
+                                  ? 'Remarks'
+                                  : 'Kuantitas',
+                              logEntry.quantityOrRemark is String
+                                  ? logEntry.quantityOrRemark.toString()
+                                  : quantityText,
+                              isBoldValue: true),
+
+                          // Stok Sebelum dan Sesudah
+                          Padding(
+                            padding: const EdgeInsets.only(top: 4.0),
+                            child: Row(
+                              children: [
+                                const Icon(Icons.inventory_2,
+                                    size: 18, color: Colors.blueGrey),
+                                const SizedBox(width: 8),
+                                Text(
+                                  'Stok: $stockTextBefore -> ',
+                                  style: TextStyle(
+                                      fontSize: 14,
+                                      color: Colors.blueGrey[700]),
+                                ),
+                                Text(
+                                  stockTextAfter,
+                                  style: TextStyle(
+                                      fontSize: 15,
+                                      color: stockColor,
+                                      fontWeight: FontWeight.bold),
+                                ),
+                              ],
+                            ),
+                          ),
+
+                          // Remarks Tambahan (jika ada)
+                          if (logEntry.remarks != null &&
+                              logEntry.remarks!.isNotEmpty)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 8.0),
+                              child: _buildLogDetailRow(Icons.info_outline,
+                                  'Catatan', logEntry.remarks!,
+                                  isItalic: true),
+                            ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              );
+            },
+          ),
         ),
+      ),
+    );
+  }
+
+  // Helper widget untuk baris detail log
+  Widget _buildLogDetailRow(IconData icon, String label, String value,
+      {bool isBoldValue = false, bool isItalic = false}) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4.0),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, size: 18, color: Colors.blueGrey),
+          SizedBox(width: 8),
+          Expanded(
+            child: Text.rich(
+              // Penggunaan konstruktor TextSpan dari Flutter
+              TextSpan(
+                children: [
+                  TextSpan(
+                    text: '$label: ',
+                    style: TextStyle(fontSize: 14, color: Colors.blueGrey[700]),
+                  ),
+                  TextSpan(
+                    text: value,
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: Colors.black87,
+                      fontWeight:
+                          isBoldValue ? FontWeight.bold : FontWeight.normal,
+                      fontStyle: isItalic ? FontStyle.italic : FontStyle.normal,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

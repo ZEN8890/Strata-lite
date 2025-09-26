@@ -1371,14 +1371,26 @@ class _ItemListScreenState extends State<ItemListScreen> {
                     TextStyle(fontWeight: FontWeight.bold, color: textColor)),
             subtitle:
                 Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              // --- BARIS KODE YANG DIMODIFIKASI ---
               Text(
-                '${item.quantityOrRemark is int ? 'Stok: ${item.quantityOrRemark}' : 'Jenis: Tidak Bisa Dihitung'}',
+                item.quantityOrRemark is int
+                    ? 'Stok: ${item.quantityOrRemark}'
+                    : 'Remarks: ${item.quantityOrRemark}', // Jika bukan int, tampilkan Remarks
                 style: TextStyle(color: textColor),
               ),
+              // ------------------------------------
               Text(
                 'Klasifikasi: ${item.classification ?? 'Tidak Ada Klasifikasi'}',
                 style: TextStyle(fontSize: 14, color: textColor),
               ),
+              if (item.expiryDate != null)
+                Text(
+                  'Expiry Date: ${DateFormat('dd-MM-yyyy').format(item.expiryDate!)}',
+                  style: TextStyle(
+                      fontSize: 12,
+                      color: textColor,
+                      fontWeight: FontWeight.bold),
+                ),
             ]),
             onTap: () => _createOrEditItem(itemToEdit: item, barcode: item.id),
             trailing: IconButton(
