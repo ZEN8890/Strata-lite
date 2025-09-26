@@ -12,7 +12,10 @@ class LoginScreen extends StatefulWidget {
   State<LoginScreen> createState() => _LoginScreenState();
 }
 
-class _LoginScreenState extends State<LoginScreen> {
+class _LoginScreenState extends State<LoginScreen>
+    with SingleTickerProviderStateMixin {
+  // Pastikan mixin ini ada
+
   final TextEditingController _usernameController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
   final _formKey = GlobalKey<FormState>();
@@ -21,6 +24,12 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _rememberMe = false;
   bool _obscurePassword = true;
 
+  // --- PERUBAHAN ANIMASI TYPING ---
+  late AnimationController _animationController;
+  late Animation<int> _typingAnimation;
+  static const String _title = 'QR Aid'; // Judul target animasi
+  // ---------------------------------
+
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
@@ -28,12 +37,28 @@ class _LoginScreenState extends State<LoginScreen> {
   void initState() {
     super.initState();
     _loadRememberedUsername();
+
+    // Inisialisasi AnimationController
+    _animationController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 2000), // Durasi total typing
+    );
+
+    // Animasi dari 0 hingga panjang string
+    _typingAnimation = IntTween(
+      begin: 0,
+      end: _title.length,
+    ).animate(_animationController);
+
+    // Mulai animasi (hanya sekali)
+    _animationController.forward();
   }
 
   @override
   void dispose() {
     _usernameController.dispose();
     _passwordController.dispose();
+    _animationController.dispose(); // Dispose controller
     super.dispose();
   }
 
@@ -189,7 +214,25 @@ class _LoginScreenState extends State<LoginScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Login'),
+        // Menerapkan AnimatedBuilder untuk efek typing
+        title: AnimatedBuilder(
+          animation: _typingAnimation,
+          builder: (context, child) {
+            final int currentLength = _typingAnimation.value;
+            // Ambil substring dari judul sesuai nilai animasi saat ini
+            final String textToShow = _title.substring(0, currentLength);
+
+            // Tambahkan logika kursor berkedip untuk efek yang lebih realistis
+            final bool isTypingFinished = currentLength >= _title.length;
+            final bool showCursor = !isTypingFinished &&
+                (_animationController.value * 10).toInt() % 2 == 0;
+
+            return Text(
+              textToShow + (showCursor ? '|' : ''),
+              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+            );
+          },
+        ),
         centerTitle: true,
         automaticallyImplyLeading: false,
       ),
