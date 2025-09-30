@@ -1,3 +1,4 @@
+// Path: lib/screens/scan_barcode.dart
 import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'dart:async';
@@ -36,6 +37,9 @@ class _ScanBarcodeScreenState extends State<ScanBarcodeScreen> {
   bool _isQuantityBased = true;
   String _userRole = 'staff';
   bool _isAdding = false;
+
+  bool _markAsZero =
+      false; // Status untuk menandai item non-kuantitas sebagai stok nol
 
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
@@ -118,11 +122,8 @@ class _ScanBarcodeScreenState extends State<ScanBarcodeScreen> {
           final userData = userDoc.data() as Map<String, dynamic>;
           setState(() {
             _userRole = userData['role'] ?? 'staff';
-            if (_userRole == 'staff') {
-              _isAdding = false;
-            } else {
-              _isAdding = true;
-            }
+            // Default operation for Admin is 'Tambah', Staff is 'Ambil'
+            _isAdding = _userRole != 'staff';
           });
           log('User role fetched: $_userRole');
         }
@@ -159,6 +160,7 @@ class _ScanBarcodeScreenState extends State<ScanBarcodeScreen> {
       _quantityController.clear();
       _remarksController.clear();
       _detectedBarcodeRect = null;
+      _markAsZero = false; // Reset status mark as zero
       _scannerController = MobileScannerController(
         detectionSpeed: DetectionSpeed.normal,
         facing: CameraFacing.back,
@@ -248,6 +250,7 @@ class _ScanBarcodeScreenState extends State<ScanBarcodeScreen> {
       _scannedItem = null;
       _quantityController.clear();
       _remarksController.clear();
+      _markAsZero = false; // Reset status mark as zero
     });
 
     try {
@@ -263,6 +266,14 @@ class _ScanBarcodeScreenState extends State<ScanBarcodeScreen> {
           _scannedItem = Item.fromFirestore(
               itemDoc.data() as Map<String, dynamic>, itemDoc.id);
           _isQuantityBased = _scannedItem!.quantityOrRemark is int;
+
+          // Isi remarksController dengan remarks yang ada jika item non-kuantitas
+          if (!_isQuantityBased && _scannedItem!.quantityOrRemark is String) {
+            _remarksController.text = _scannedItem!.quantityOrRemark as String;
+          } else {
+            _remarksController.clear();
+          }
+
           _isLoading = false;
         });
         _showNotification('Item Ditemukan',
@@ -334,6 +345,12 @@ class _ScanBarcodeScreenState extends State<ScanBarcodeScreen> {
         } else {
           if (!currentRemarksControllers.containsKey(item.id)) {
             currentRemarksControllers[item.id!] = TextEditingController();
+
+            // Isi field remarks dengan remarks item saat ini (jika ada dan mode Tambah)
+            if (_isAdding && item.quantityOrRemark is String) {
+              currentRemarksControllers[item.id]!.text =
+                  item.quantityOrRemark as String;
+            }
           }
         }
       }
@@ -449,11 +466,15 @@ class _ScanBarcodeScreenState extends State<ScanBarcodeScreen> {
                                                 controller:
                                                     currentRemarksControllers[
                                                         item.id],
-                                                decoration:
-                                                    const InputDecoration(
-                                                  labelText:
-                                                      'Remarks Pengambilan',
-                                                  border: OutlineInputBorder(),
+                                                decoration: InputDecoration(
+                                                  labelText: _isAdding
+                                                      ? 'Remarks Baru (Mengganti Status Item)'
+                                                      : 'Remarks Pengambilan',
+                                                  border:
+                                                      const OutlineInputBorder(),
+                                                  hintText: _isAdding
+                                                      ? 'Masukkan kondisi/status baru'
+                                                      : 'Masukkan alasan pengambilan',
                                                 ),
                                                 maxLines: 3,
                                                 textInputAction:
@@ -530,13 +551,27 @@ class _ScanBarcodeScreenState extends State<ScanBarcodeScreen> {
             });
           }
         } else {
-          String? remark = remarksControllers[item.id]!.text.trim();
-          if (remark.isNotEmpty) {
-            itemsToProcess.add({
-              'item': item,
-              'remark': remark,
-            });
+          // --- UPDATED LOGIC FOR NON-QUANTITY ITEM IN GROUP CONFIRMATION ---
+          String remark = remarksControllers[item.id]!.text.trim();
+
+          // Validation: If Adding (Admin mode), remark must not be empty.
+          if (_isAdding && remark.isEmpty) {
+            _showNotification('Remarks Kosong',
+                'Remarks untuk item ${item.name} harus diisi saat mode Tambah.',
+                isError: true);
+            // Kembali ke dialog sebelumnya
+            return;
           }
+
+          // Add to list. Provide a default remark if in 'Ambil' mode and remark is empty.
+          itemsToProcess.add({
+            'item': item,
+            'remark': remark.isEmpty && !_isAdding
+                ? 'Pengambilan dicatat (No remarks)'
+                : remark,
+            'isAdding': _isAdding,
+          });
+          // --- END UPDATED LOGIC FOR NON-QUANTITY ITEM IN GROUP CONFIRMATION ---
         }
       }
     }
@@ -571,9 +606,10 @@ class _ScanBarcodeScreenState extends State<ScanBarcodeScreen> {
                   if (item.quantityOrRemark is int) {
                     int qty = data['quantity'];
                     return Text(
-                        '- ${item.name}: ${_isAdding ? 'Tambah' : 'Ambil'} $qty');
+                        '- ${data['isAdding'] ? 'Tambah' : 'Ambil'} $qty ${item.name}');
                   } else {
-                    return Text('- ${item.name}: Remarks "${data['remark']}"');
+                    return Text(
+                        '- ${item.name}: ${data['isAdding'] ? 'Update Remarks' : 'Ambil Remarks'} - "${data['remark']}"');
                   }
                 }).toList(),
                 const SizedBox(height: 20),
@@ -629,9 +665,9 @@ class _ScanBarcodeScreenState extends State<ScanBarcodeScreen> {
       try {
         if (item.quantityOrRemark is int) {
           int quantity = data['quantity'];
-          int newQuantity = _isAdding ? quantity : -quantity;
+          int newQuantity = data['isAdding'] ? quantity : -quantity;
 
-          if (!_isAdding && quantity > item.quantityOrRemark) {
+          if (!data['isAdding'] && quantity > item.quantityOrRemark) {
             _showNotification('Gagal', 'Stok ${item.name} tidak cukup.',
                 isError: true);
             continue;
@@ -646,16 +682,39 @@ class _ScanBarcodeScreenState extends State<ScanBarcodeScreen> {
           int? updatedStock = (updatedItemDoc.data()
               as Map<String, dynamic>)['quantityOrRemark'];
 
-          String operation = _isAdding ? 'Ditambahkan' : 'Dikurangi';
+          String operation = data['isAdding'] ? 'Ditambahkan' : 'Dikurangi';
           _showNotification('Sukses',
               'Stok ${item.name} $operation sebanyak $quantity. Sisa: $updatedStock');
 
           await _addLogEntry(item, newQuantity,
               remainingStock: updatedStock, remarks: groupRemarks);
         } else {
+          // --- START: UPDATED LOGIC FOR NON-QUANTITY ITEM IN GROUP PROCESSING ---
           String remarks = data['remark'];
-          await _addLogEntry(item, remarks, remarks: groupRemarks ?? remarks);
-          _showNotification('Sukses', 'Pengambilan ${item.name} dicatat.');
+          bool isAddingRemark = data['isAdding'];
+
+          int? logMarker =
+              isAddingRemark ? 1 : null; // Marker untuk Penambahan Remarks
+
+          if (isAddingRemark) {
+            // 1. UPDATE MASTER ITEM DENGAN REMARKS BARU
+            await _firestore.collection('items').doc(item.id).update({
+              'quantityOrRemark': remarks, // <-- MENGGANTI REMARKS ITEM
+            });
+            _showNotification(
+                'Sukses', 'Remarks ${item.name} diperbarui: $remarks');
+          } else {
+            _showNotification('Sukses', 'Pengambilan ${item.name} dicatat.');
+          }
+
+          // 2. CATAT LOG: Menggunakan remarks untuk quantityOrRemark, dan marker untuk Penambahan
+          await _addLogEntry(
+            item,
+            remarks, // Log remarks sebagai quantityOrRemark
+            remarks: groupRemarks ?? remarks,
+            remainingStock: logMarker, // <-- MARKER UNTUK PENAMBAHAN
+          );
+          // --- END: UPDATED LOGIC FOR NON-QUANTITY ITEM IN GROUP PROCESSING ---
         }
       } catch (e) {
         log('Error processing item ${item.name}: $e');
@@ -684,6 +743,7 @@ class _ScanBarcodeScreenState extends State<ScanBarcodeScreen> {
 
     try {
       if (_isQuantityBased) {
+        // --- LOGIKA UNTUK ITEM BERBASIS KUANTITAS ---
         int? quantity = int.tryParse(_quantityController.text.trim());
         if (quantity == null || quantity <= 0) {
           _showNotification(
@@ -725,17 +785,60 @@ class _ScanBarcodeScreenState extends State<ScanBarcodeScreen> {
           remainingStock: updatedStock,
         );
       } else {
-        String remarks = _remarksController.text.trim();
-        if (remarks.isEmpty) {
-          _showNotification(
-              'Remarks Kosong', 'Remarks tidak boleh kosong untuk item ini.',
+        // --- START: UPDATED LOGIC FOR NON-QUANTITY ITEM (SINGLE SCAN) ---
+        String userRemarks = _remarksController.text.trim();
+        String notificationMessage;
+        int? logMarker =
+            _isAdding ? 1 : null; // Marker: 1 = Penambahan/Update Remarks
+        dynamic logQuantityOrRemark = userRemarks; // Default log value
+
+        if (userRemarks.isEmpty && !_isAdding && !_markAsZero) {
+          _showNotification('Remarks Kosong',
+              'Remarks harus diisi atau tandai sebagai Stok Habis.',
               isError: true);
           return;
         }
-        await _addLogEntry(_scannedItem!, remarks, remarks: remarks);
-        _showNotification('Pengambilan Dicatat',
-            'Pengambilan item "${_scannedItem!.name}" dicatat.',
-            isError: false);
+
+        if (_isAdding) {
+          // SCENARIO 1: OPSI TAMBAH DIPILIH (Update Remarks Master Item)
+          if (userRemarks.isEmpty) {
+            _showNotification(
+                'Remarks Kosong', 'Remarks harus diisi untuk memperbarui item.',
+                isError: true);
+            return;
+          }
+
+          // 1. UPDATE MASTER ITEM DENGAN REMARKS BARU
+          await _firestore.collection('items').doc(_scannedItem!.id).update({
+            'quantityOrRemark': userRemarks, // <-- MENGGANTI REMARKS ITEM
+          });
+          notificationMessage =
+              'Remarks item "${_scannedItem!.name}" berhasil diperbarui: $userRemarks';
+          _showNotification('Item Diperbarui (Tambah)', notificationMessage,
+              isError: false);
+        } else {
+          // SCENARIO 2: OPSI AMBIL DIPILIH (Mencatat Pengambilan/Penggunaan)
+          if (_markAsZero) {
+            logQuantityOrRemark = 'Quantity Zero';
+            logMarker = 0; // Marker opsional untuk Zeroing out stock
+            userRemarks = 'STOK NOL (Item non-kuantitas)';
+          }
+
+          notificationMessage =
+              'Pengambilan item "${_scannedItem!.name}" dicatat.';
+          _showNotification('Pengambilan Dicatat', notificationMessage,
+              isError: false);
+        }
+
+        // CATAT LOG
+        await _addLogEntry(
+          _scannedItem!,
+          logQuantityOrRemark,
+          remarks:
+              userRemarks, // Simpan remarks baru/pengambilan di field remarks log
+          remainingStock: logMarker, // <-- MARKER UNTUK PENAMBAHAN
+        );
+        // --- END: UPDATED LOGIC FOR NON-QUANTITY ITEM (SINGLE SCAN) ---
       }
     } catch (e) {
       _showNotification('Gagal Memproses Stok', 'Gagal memproses stok: $e',
@@ -756,6 +859,7 @@ class _ScanBarcodeScreenState extends State<ScanBarcodeScreen> {
       _remarksController.clear();
       _isLoading = false;
       _scannedItem = null;
+      _markAsZero = false; // Reset status mark as zero
     });
   }
 
@@ -888,6 +992,9 @@ class _ScanBarcodeScreenState extends State<ScanBarcodeScreen> {
                                   setState(() {
                                     _isAdding = true;
                                     _scannedItem = null;
+                                    _remarksController
+                                        .clear(); // Clear remarks saat ganti mode
+                                    _quantityController.clear();
                                   });
                                 },
                                 icon: const Icon(Icons.add_circle_outline),
@@ -908,6 +1015,9 @@ class _ScanBarcodeScreenState extends State<ScanBarcodeScreen> {
                                   setState(() {
                                     _isAdding = false;
                                     _scannedItem = null;
+                                    _remarksController
+                                        .clear(); // Clear remarks saat ganti mode
+                                    _quantityController.clear();
                                   });
                                 },
                                 icon: const Icon(Icons.remove_circle_outline),
@@ -994,23 +1104,49 @@ class _ScanBarcodeScreenState extends State<ScanBarcodeScreen> {
                                 },
                               )
                             else
-                              TextFormField(
-                                controller: _remarksController,
-                                decoration: const InputDecoration(
-                                  labelText: 'Remarks Pengambilan',
-                                  border: OutlineInputBorder(),
-                                  filled: true,
-                                  fillColor: Color(0xFFF3F4F6),
-                                  prefixIcon: Icon(Icons.notes),
-                                  hintText: 'Contoh: Untuk P3K di ruang rapat',
-                                ),
-                                maxLines: 3,
-                                textInputAction: TextInputAction
-                                    .done, // Dibiarkan tetap done
-                                onFieldSubmitted: (value) {
-                                  // Memaksa keyboard untuk ditutup
-                                  FocusScope.of(context).unfocus();
-                                },
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  TextFormField(
+                                    controller: _remarksController,
+                                    decoration: InputDecoration(
+                                      labelText: _isAdding
+                                          ? 'Remarks Baru (Akan Mengganti Status Item)'
+                                          : 'Remarks Pengambilan',
+                                      border: const OutlineInputBorder(),
+                                      filled: true,
+                                      fillColor: const Color(0xFFF3F4F6),
+                                      prefixIcon: const Icon(Icons.notes),
+                                      hintText: _isAdding
+                                          ? 'Masukkan kondisi/status baru'
+                                          : 'Contoh: Rusak, telah digunakan, dll.',
+                                    ),
+                                    maxLines: 3,
+                                    textInputAction: TextInputAction.done,
+                                    onFieldSubmitted: (value) {
+                                      FocusScope.of(context).unfocus();
+                                    },
+                                  ),
+                                  const SizedBox(height: 10),
+                                  // Switch "Mark as Zero" hanya muncul saat mode Ambil (Remove)
+                                  if (!_isAdding)
+                                    Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        const Text(
+                                            'Tandai sebagai Stok Habis (0)'),
+                                        Switch(
+                                          value: _markAsZero,
+                                          onChanged: (bool value) {
+                                            setState(() {
+                                              _markAsZero = value;
+                                            });
+                                          },
+                                        ),
+                                      ],
+                                    ),
+                                ],
                               ),
                             const SizedBox(height: 20),
                             Center(
@@ -1051,7 +1187,6 @@ class _ScanBarcodeScreenState extends State<ScanBarcodeScreen> {
   }
 
   Widget _buildScanWindowOverlay(double width, double height) {
-    // ... (Kode ini tidak berubah dan tidak memiliki masalah overflow)
     return Stack(
       children: [
         Positioned.fill(

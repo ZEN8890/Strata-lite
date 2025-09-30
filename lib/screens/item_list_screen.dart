@@ -36,7 +36,7 @@ class _ItemListScreenState extends State<ItemListScreen> {
   Timer? _notificationTimer;
   bool _isLoadingExport = false;
   bool _isLoadingImport = false;
-  bool _isLoadingQuantityImport = false; // Add new loading state
+  bool _isLoadingQuantityImport = false;
   bool _isGroupedView = false;
 
   @override
@@ -534,13 +534,19 @@ class _ItemListScreenState extends State<ItemListScreen> {
                 (doc.data() as Map<String, dynamic>)['name'] as String,
             value: (doc) => doc.id);
 
+        final Map<String, dynamic> itemNameToDataMap = Map.fromIterable(
+            existingItemsSnapshot.docs,
+            key: (doc) =>
+                (doc.data() as Map<String, dynamic>)['name'] as String,
+            value: (doc) => doc.data());
+
         for (int i = 1; i < table.rows.length; i++) {
           var row = table.rows[i];
           String name = (row.length > nameIndex
                   ? row[nameIndex]?.value?.toString()
                   : '') ??
               '';
-          String quantityString = (row.length > quantityOrRemarkIndex
+          String quantityOrRemarkString = (row.length > quantityOrRemarkIndex
                   ? row[quantityOrRemarkIndex]?.value?.toString()
                   : '') ??
               '';
@@ -555,13 +561,11 @@ class _ItemListScreenState extends State<ItemListScreen> {
           }
 
           final itemId = itemNameToIdMap[name];
-          final currentItem =
-              existingItemsSnapshot.docs.firstWhere((doc) => doc.id == itemId);
-          final isQuantityBased = (currentItem.data()
-              as Map<String, dynamic>)['quantityOrRemark'] is int;
+          final currentItemData = itemNameToDataMap[name]!;
+          final isQuantityBased = currentItemData['quantityOrRemark'] is int;
 
           if (isQuantityBased) {
-            int? newQuantity = int.tryParse(quantityString);
+            int? newQuantity = int.tryParse(quantityOrRemarkString);
             if (newQuantity == null) {
               failedUpdates.add('"$name" (kuantitas tidak valid)');
               continue;
@@ -574,9 +578,17 @@ class _ItemListScreenState extends State<ItemListScreen> {
                 {'quantityOrRemark': newQuantity});
             updatedCount++;
           } else {
-            // For non-quantity items, skip this process
-            failedUpdates.add('"$name" (bukan item berbasis kuantitas)');
-            continue;
+            // --- MODIFICATION: Allow remarks update if isQuantityBased is false
+            String newRemarks = quantityOrRemarkString.trim();
+            if (newRemarks.isEmpty) {
+              failedUpdates.add('"$name" (remarks kosong)');
+              continue;
+            }
+
+            batch.update(_firestore.collection('items').doc(itemId),
+                {'quantityOrRemark': newRemarks});
+            updatedCount++;
+            // --- END MODIFICATION ---
           }
         }
 
@@ -604,7 +616,7 @@ class _ItemListScreenState extends State<ItemListScreen> {
 
         if (updatedCount == 0 && failedUpdates.isEmpty) {
           importSummaryMessage =
-              'Tidak ada item berbasis kuantitas yang dapat diperbarui dari file Excel.';
+              'Tidak ada item yang dapat diperbarui dari file Excel.';
         }
 
         _showNotification('Impor Kuantitas Selesai!', importSummaryMessage,
@@ -698,6 +710,12 @@ class _ItemListScreenState extends State<ItemListScreen> {
             : '');
     final TextEditingController _barcodeController =
         TextEditingController(text: barcode ?? '');
+
+    // Kontroler untuk menampilkan klasifikasi (read-only)
+    final TextEditingController _classificationDisplayController =
+        TextEditingController(
+            text: itemToEdit?.classification ?? 'Tidak Ada Klasifikasi');
+
     DateTime? _selectedExpiryDate = itemToEdit?.expiryDate;
     bool isQuantityBased =
         (itemToEdit?.quantityOrRemark is int) || itemToEdit == null;
@@ -731,6 +749,7 @@ class _ItemListScreenState extends State<ItemListScreen> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
+                    // --- NAMA BARANG ---
                     TextFormField(
                       controller: _nameController,
                       decoration: const InputDecoration(
@@ -746,11 +765,31 @@ class _ItemListScreenState extends State<ItemListScreen> {
                       },
                     ),
                     const SizedBox(height: 15),
+
+                    // --- KLASIFIKASI SAAT INI (DISPLAY) ---
+                    if (itemToEdit != null)
+                      Column(
+                        children: [
+                          TextFormField(
+                            controller: _classificationDisplayController,
+                            decoration: const InputDecoration(
+                              labelText: 'Klasifikasi Saat Ini',
+                              border: OutlineInputBorder(),
+                              fillColor: Color(0xFFF3F4F6),
+                              filled: true,
+                            ),
+                            readOnly: true,
+                          ),
+                          const SizedBox(height: 15),
+                        ],
+                      ),
+
+                    // --- DROPDOWN KLASIFIKASI (EDIT) ---
                     if (_groupNames.isNotEmpty)
                       DropdownButtonFormField<String>(
                         value: _selectedClassification,
                         decoration: const InputDecoration(
-                          labelText: 'Klasifikasi (Grup)',
+                          labelText: 'Ubah Klasifikasi (Grup)',
                           border: OutlineInputBorder(),
                         ),
                         items: [
@@ -768,13 +807,15 @@ class _ItemListScreenState extends State<ItemListScreen> {
                         onChanged: (String? newValue) {
                           setState(() {
                             _selectedClassification = newValue;
+                            // Update display controller immediately
+                            _classificationDisplayController.text =
+                                newValue ?? 'Tidak Ada Klasifikasi';
                           });
                         },
                       )
                     else
-                      const Text(
-                          'Tidak ada grup yang tersedia. Buat grup terlebih dahulu.'),
-                    const SizedBox(height: 15),
+
+                    // --- KUANTITAS / REMARKS ---
                     if (isQuantityBased) ...[
                       TextFormField(
                         controller: _quantityController,
@@ -810,6 +851,8 @@ class _ItemListScreenState extends State<ItemListScreen> {
                       ),
                     ],
                     const SizedBox(height: 15),
+
+                    // --- BARCODE ---
                     TextFormField(
                       controller: _barcodeController,
                       decoration: InputDecoration(
@@ -826,6 +869,8 @@ class _ItemListScreenState extends State<ItemListScreen> {
                       readOnly: itemToEdit != null,
                     ),
                     const SizedBox(height: 15),
+
+                    // --- EXPIRY DATE ---
                     Row(
                       children: [
                         const Text('Pilih Tanggal Kadaluwarsa'),
@@ -866,6 +911,8 @@ class _ItemListScreenState extends State<ItemListScreen> {
                         },
                       ),
                     const SizedBox(height: 15),
+
+                    // --- SWITCH KUANTITAS/REMARKS ---
                     Row(
                       children: [
                         const Text('Item berbasis kuantitas?'),
@@ -972,6 +1019,12 @@ class _ItemListScreenState extends State<ItemListScreen> {
         automaticallyImplyLeading: false,
         title: Text(_isGroupedView ? 'Daftar Grup Barang' : 'Daftar Barang'),
         actions: [
+          if (!_isGroupedView)
+            IconButton(
+              icon: const Icon(Icons.add_box_outlined, color: Colors.white),
+              onPressed: () => _createOrEditItem(),
+              tooltip: 'Tambah Item Baru',
+            ),
           IconButton(
             icon: Icon(_isGroupedView ? Icons.view_list : Icons.folder_open),
             onPressed: () {
@@ -1371,14 +1424,12 @@ class _ItemListScreenState extends State<ItemListScreen> {
                     TextStyle(fontWeight: FontWeight.bold, color: textColor)),
             subtitle:
                 Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              // --- BARIS KODE YANG DIMODIFIKASI ---
               Text(
                 item.quantityOrRemark is int
                     ? 'Stok: ${item.quantityOrRemark}'
-                    : 'Remarks: ${item.quantityOrRemark}', // Jika bukan int, tampilkan Remarks
+                    : 'Remarks: ${item.quantityOrRemark}',
                 style: TextStyle(color: textColor),
               ),
-              // ------------------------------------
               Text(
                 'Klasifikasi: ${item.classification ?? 'Tidak Ada Klasifikasi'}',
                 style: TextStyle(fontSize: 14, color: textColor),

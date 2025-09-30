@@ -185,7 +185,6 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
         setState(() {
           _dynamicClassifications = ['Semua Klasifikasi'];
           _selectedClassification = _dynamicClassifications.first;
-          _isClassificationsLoading = false;
         });
       }
     }
@@ -434,81 +433,25 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
             doc.data() as Map<String, dynamic>, doc.id);
       }).toList();
 
-      List<LogEntry> filteredLogs = allLogs.where((logEntry) {
-        final String lowerCaseQuery = _searchQuery.toLowerCase();
-        bool matchesSearch = logEntry.itemName
-                .toLowerCase()
-                .contains(lowerCaseQuery) ||
-            logEntry.staffName.toLowerCase().contains(lowerCaseQuery) ||
-            logEntry.staffDepartment.toLowerCase().contains(lowerCaseQuery) ||
-            (logEntry.itemClassification
-                    ?.toLowerCase()
-                    .contains(lowerCaseQuery) ??
-                false) ||
-            (logEntry.remarks?.toLowerCase().contains(lowerCaseQuery) ?? false);
-
-        if (!matchesSearch) return false;
-
-        if (_selectedStartTime != null) {
-          DateTime logTime = logEntry.timestamp;
-          TimeOfDay entryTime =
-              TimeOfDay(hour: logTime.hour, minute: logTime.minute);
-          int startMinutes =
-              _selectedStartTime!.hour * 60 + _selectedStartTime!.minute;
-          int entryMinutes = entryTime.hour * 60 + entryTime.minute;
-          if (entryMinutes < startMinutes) {
-            return false;
-          }
-        }
-        if (_selectedEndTime != null) {
-          DateTime logTime = logEntry.timestamp;
-          TimeOfDay entryTime =
-              TimeOfDay(hour: logTime.hour, minute: logTime.minute);
-          int endMinutes =
-              _selectedEndTime!.hour * 60 + _selectedEndTime!.minute;
-          int entryMinutes = entryTime.hour * 60 + entryTime.minute;
-          if (entryMinutes > endMinutes) {
-            return false;
-          }
-        }
-        if (_selectedStartDate != null) {
-          DateTime logDate = DateTime(logEntry.timestamp.year,
-              logEntry.timestamp.month, logEntry.timestamp.day);
-          DateTime startDate = DateTime(_selectedStartDate!.year,
-              _selectedStartDate!.month, _selectedStartDate!.day);
-          if (logDate.isBefore(startDate)) return false;
-        }
-        if (_selectedEndDate != null) {
-          DateTime logDate = DateTime(logEntry.timestamp.year,
-              logEntry.timestamp.month, logEntry.timestamp.day);
-          DateTime endDate = DateTime(_selectedEndDate!.year,
-              _selectedEndDate!.month, _selectedEndDate!.day);
-          if (logDate.isAfter(endDate)) return false;
-        }
-
-        if (_selectedClassification != null &&
-            _selectedClassification != 'Semua Klasifikasi') {
-          if (logEntry.itemClassification != _selectedClassification)
-            return false;
-        }
-
-        // Filter tipe transaksi untuk ekspor
-        bool isAdding =
-            logEntry.quantityOrRemark is int && logEntry.quantityOrRemark > 0;
-        bool isTaking =
-            logEntry.quantityOrRemark is int && logEntry.quantityOrRemark < 0;
-
-        if (_selectedTransactionType == 'Penambahan' && !isAdding) {
-          return false;
-        }
-        if (_selectedTransactionType == 'Pengambilan' && !isTaking) {
-          return false;
-        }
-
-        return true;
-      }).toList();
+      List<LogEntry> filteredLogs =
+          allLogs.where(_applyFilters).toList(); // Gunakan _applyFilters
 
       for (var logEntry in filteredLogs) {
+        // --- LOGIC BARU UNTUK MENENTUKAN TIPE LOG (SAMA DENGAN DISPLAY LOGIC) ---
+        bool isRemarkAddition =
+            logEntry.quantityOrRemark is String && logEntry.remainingStock == 1;
+        bool isQuantityAddition =
+            logEntry.quantityOrRemark is int && logEntry.quantityOrRemark > 0;
+
+        String logType;
+        if (isRemarkAddition || isQuantityAddition) {
+          logType = 'Penambahan';
+        } else {
+          // Termasuk Pengambilan Kuantitas, Pengambilan Remarks, dan Zeroing (remainingStock=0)
+          logType = 'Pengambilan';
+        }
+        // -------------------------------------------------------------------------
+
         String formattedDateTime =
             '${logEntry.timestamp.day.toString().padLeft(2, '0')}-'
             '${logEntry.timestamp.month.toString().padLeft(2, '0')}-'
@@ -516,11 +459,6 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
             '${logEntry.timestamp.hour.toString().padLeft(2, '0')}:'
             '${logEntry.timestamp.minute.toString().padLeft(2, '0')}:'
             '${logEntry.timestamp.second.toString().padLeft(2, '0')}';
-
-        String logType =
-            (logEntry.quantityOrRemark is int && logEntry.quantityOrRemark > 0)
-                ? 'Penambahan'
-                : 'Pengambilan';
 
         sheetObject.appendRow([
           excel_lib.TextCellValue(logType),
@@ -548,6 +486,7 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
         if (defaultTargetPlatform == TargetPlatform.windows ||
             defaultTargetPlatform == TargetPlatform.macOS ||
             defaultTargetPlatform == TargetPlatform.linux) {
+          // Desktop: Save file
           final String? resultPath = await FilePicker.platform.saveFile(
             fileName: fileName,
             type: FileType.custom,
@@ -569,6 +508,7 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
                 isError: true);
           }
         } else {
+          // Mobile: Share file
           final directory = await getApplicationDocumentsDirectory();
           final filePath = '${directory.path}/$fileName';
           final file = File(filePath);
@@ -687,10 +627,87 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
     }
   }
 
+  // --- FUNGSI BARU UNTUK APLIKASI FILTER DI LOGIC ---
+  bool _applyFilters(LogEntry logEntry) {
+    // 1. Filter Pencarian
+    final String lowerCaseQuery = _searchQuery.toLowerCase();
+    bool matchesSearch = logEntry.itemName
+            .toLowerCase()
+            .contains(lowerCaseQuery) ||
+        logEntry.staffName.toLowerCase().contains(lowerCaseQuery) ||
+        logEntry.staffDepartment.toLowerCase().contains(lowerCaseQuery) ||
+        (logEntry.itemClassification?.toLowerCase().contains(lowerCaseQuery) ??
+            false) ||
+        (logEntry.remarks?.toLowerCase().contains(lowerCaseQuery) ?? false);
+
+    if (!matchesSearch) return false;
+
+    // 2. Filter Tanggal
+    if (_selectedStartDate != null && _selectedEndDate != null) {
+      final logDate = DateTime(logEntry.timestamp.year,
+          logEntry.timestamp.month, logEntry.timestamp.day);
+      final startDate = DateTime(_selectedStartDate!.year,
+          _selectedStartDate!.month, _selectedStartDate!.day);
+      final endDate = DateTime(_selectedEndDate!.year, _selectedEndDate!.month,
+          _selectedEndDate!.day);
+
+      // Filter harus mencakup hari akhir (hingga 23:59:59)
+      if (logDate.isBefore(startDate) || logDate.isAfter(endDate)) {
+        return false;
+      }
+    }
+
+    // 3. Filter Waktu
+    if (_selectedStartTime != null && _selectedEndTime != null) {
+      final logMinutes =
+          logEntry.timestamp.hour * 60 + logEntry.timestamp.minute;
+      final startMinutes =
+          _selectedStartTime!.hour * 60 + _selectedStartTime!.minute;
+      final endMinutes = _selectedEndTime!.hour * 60 + _selectedEndTime!.minute;
+
+      // Ini adalah filtering yang disederhanakan, tidak menangani wrap-around tengah malam dengan sempurna
+      // Tetapi berfungsi jika rentang waktu tidak melintasi tengah malam.
+      if (logMinutes < startMinutes || logMinutes > endMinutes) {
+        return false;
+      }
+    }
+
+    // 4. Filter Klasifikasi
+    if (_selectedClassification != 'Semua Klasifikasi' &&
+        logEntry.itemClassification != _selectedClassification) {
+      return false;
+    }
+
+    // 5. Filter Tipe Transaksi (Logic yang Diperbarui)
+    if (_selectedTransactionType != 'Semua') {
+      // Tentukan apakah ini log Penambahan (Quantity > 0 ATAU Remarks Update Marker == 1)
+      bool isRemarkAddition =
+          logEntry.quantityOrRemark is String && logEntry.remainingStock == 1;
+      bool isQuantityAddition =
+          logEntry.quantityOrRemark is int && logEntry.quantityOrRemark > 0;
+
+      bool isAdding = isRemarkAddition || isQuantityAddition;
+
+      // Sisanya (Quantity < 0, Remarks Log tanpa marker) adalah Pengambilan
+      bool isTaking = !isAdding;
+
+      if (_selectedTransactionType == 'Penambahan' && !isAdding) {
+        return false;
+      }
+      if (_selectedTransactionType == 'Pengambilan' && !isTaking) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+  // --- END FUNGSI BARU ---
+
   @override
   Widget build(BuildContext context) {
     Query<Map<String, dynamic>> query = _firestore.collection('log_entries');
 
+    // Filter Firestore hanya berdasarkan tanggal dan klasifikasi, karena filter waktu dan tipe transaksi harus diterapkan di sisi klien
     if (_selectedStartDate != null) {
       DateTime startOfDay = DateTime(_selectedStartDate!.year,
           _selectedStartDate!.month, _selectedStartDate!.day);
@@ -1049,82 +1066,9 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
                     doc.data() as Map<String, dynamic>, doc.id);
               }).toList();
 
-              List<LogEntry> filteredLogs = allLogs.where((logEntry) {
-                // Logika filtering
-                final String lowerCaseQuery = _searchQuery.toLowerCase();
-                bool matchesSearch = logEntry.itemName
-                        .toLowerCase()
-                        .contains(lowerCaseQuery) ||
-                    logEntry.staffName.toLowerCase().contains(lowerCaseQuery) ||
-                    logEntry.staffDepartment
-                        .toLowerCase()
-                        .contains(lowerCaseQuery) ||
-                    (logEntry.itemClassification
-                            ?.toLowerCase()
-                            .contains(lowerCaseQuery) ??
-                        false) ||
-                    (logEntry.remarks?.toLowerCase().contains(lowerCaseQuery) ??
-                        false);
-
-                if (!matchesSearch) return false;
-
-                if (_selectedStartTime != null) {
-                  DateTime logTime = logEntry.timestamp;
-                  TimeOfDay entryTime =
-                      TimeOfDay(hour: logTime.hour, minute: logTime.minute);
-                  int startMinutes = _selectedStartTime!.hour * 60 +
-                      _selectedStartTime!.minute;
-                  int entryMinutes = entryTime.hour * 60 + entryTime.minute;
-                  if (entryMinutes < startMinutes) {
-                    return false;
-                  }
-                }
-                if (_selectedEndTime != null) {
-                  DateTime logTime = logEntry.timestamp;
-                  TimeOfDay entryTime =
-                      TimeOfDay(hour: logTime.hour, minute: logTime.minute);
-                  int endMinutes =
-                      _selectedEndTime!.hour * 60 + _selectedEndTime!.minute;
-                  int entryMinutes = entryTime.hour * 60 + entryTime.minute;
-                  if (entryMinutes > endMinutes) {
-                    return false;
-                  }
-                }
-                if (_selectedStartDate != null) {
-                  DateTime logDate = DateTime(logEntry.timestamp.year,
-                      logEntry.timestamp.month, logEntry.timestamp.day);
-                  DateTime startDate = DateTime(_selectedStartDate!.year,
-                      _selectedStartDate!.month, _selectedStartDate!.day);
-                  if (logDate.isBefore(startDate)) return false;
-                }
-                if (_selectedEndDate != null) {
-                  DateTime logDate = DateTime(logEntry.timestamp.year,
-                      logEntry.timestamp.month, logEntry.timestamp.day);
-                  DateTime endDate = DateTime(_selectedEndDate!.year,
-                      _selectedEndDate!.month, _selectedEndDate!.day);
-                  if (logDate.isAfter(endDate)) return false;
-                }
-
-                if (_selectedClassification != null &&
-                    _selectedClassification != 'Semua Klasifikasi') {
-                  if (logEntry.itemClassification != _selectedClassification)
-                    return false;
-                }
-
-                bool isAdding = logEntry.quantityOrRemark is int &&
-                    logEntry.quantityOrRemark > 0;
-                bool isTaking = logEntry.quantityOrRemark is int &&
-                    logEntry.quantityOrRemark < 0;
-
-                if (_selectedTransactionType == 'Penambahan' && !isAdding) {
-                  return false;
-                }
-                if (_selectedTransactionType == 'Pengambilan' && !isTaking) {
-                  return false;
-                }
-
-                return true;
-              }).toList();
+              // Mengaplikasikan filter sisi klien (waktu, tipe transaksi, dan kueri pencarian tambahan)
+              List<LogEntry> filteredLogs =
+                  allLogs.where(_applyFilters).toList();
 
               if (filteredLogs.isEmpty) {
                 bool isAnyFilterActive = _searchQuery.isNotEmpty ||
@@ -1159,13 +1103,30 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
                       '${DateFormat('dd-MM-yyyy').format(logEntry.timestamp)} '
                       '${DateFormat('HH:mm:ss').format(logEntry.timestamp)}';
 
-                  bool isAdding = logEntry.quantityOrRemark is int &&
+                  // --- LOGIC BARU UNTUK TAMPILAN ---
+                  bool isRemarkAddition = logEntry.quantityOrRemark is String &&
+                      logEntry.remainingStock == 1;
+                  bool isQuantityAddition = logEntry.quantityOrRemark is int &&
                       logEntry.quantityOrRemark > 0;
+                  bool isAdding = isRemarkAddition || isQuantityAddition;
+
                   Color logColor = isAdding ? Colors.green : Colors.red;
 
-                  String logTitle = isAdding ? 'Penambahan' : 'Pengambilan';
+                  // Tentukan logTitle
+                  String logTitle;
+                  if (isRemarkAddition) {
+                    logTitle = 'Pembaruan Status (Penambahan)';
+                    logColor = Colors
+                        .green; // Pastikan warnanya hijau untuk penambahan status
+                  } else if (isQuantityAddition) {
+                    logTitle = 'Penambahan Kuantitas';
+                  } else {
+                    logTitle = 'Pengambilan';
+                  }
+
                   IconData logIcon =
                       isAdding ? Icons.add_circle : Icons.remove_circle;
+                  // ------------------------------------
 
                   String quantityText;
                   if (logEntry.quantityOrRemark is int) {
@@ -1174,20 +1135,22 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
                     quantityText = logEntry.quantityOrRemark.toString();
                   }
 
+                  // Logika Tampilan Stok
                   String stockTextBefore = 'N/A';
+                  String stockTextAfter = 'N/A';
+                  Color stockColor = Colors.blueGrey;
+
                   if (logEntry.remainingStock != null &&
                       logEntry.quantityOrRemark is int) {
+                    // Logika untuk item berbasis kuantitas
                     int stockAfter = logEntry.remainingStock as int;
                     int quantityChange = logEntry.quantityOrRemark as int;
                     int stockBefore = stockAfter - quantityChange;
                     stockTextBefore = stockBefore.toString();
+                    stockTextAfter = stockAfter.toString();
+                    stockColor =
+                        (stockAfter == 0) ? Colors.red : Colors.green[800]!;
                   }
-
-                  String stockTextAfter =
-                      logEntry.remainingStock?.toString() ?? 'N/A';
-                  Color stockColor = (logEntry.remainingStock == 0)
-                      ? Colors.red
-                      : Colors.green[800]!;
 
                   String classificationText =
                       logEntry.itemClassification != null &&
@@ -1222,6 +1185,7 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           const SizedBox(height: 4),
+                          // Menampilkan Log Title yang sudah disesuaikan
                           Text('Tipe Log: $logTitle',
                               style: TextStyle(
                                   color: logColor,
@@ -1232,7 +1196,7 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
                           _buildLogDetailRow(
                               Icons.access_time, 'Waktu', formattedDateTime),
 
-                          // PERUBAHAN: Menggabungkan Staff dan Departemen
+                          // Menampilkan Staff dan Departemen
                           _buildLogDetailRow(Icons.person, 'Staff',
                               '${logEntry.staffName} (${logEntry.staffDepartment})'),
 
@@ -1242,12 +1206,11 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
                               logEntry.quantityOrRemark is String
                                   ? Icons.notes
                                   : Icons.production_quantity_limits,
-                              logEntry.quantityOrRemark is String
-                                  ? 'Remarks'
+                              // KOREKSI LABEL: Jika Pembaruan Status, labelnya adalah 'Keterangan Item'
+                              (logEntry.quantityOrRemark is String)
+                                  ? 'Keterangan Item'
                                   : 'Kuantitas',
-                              logEntry.quantityOrRemark is String
-                                  ? logEntry.quantityOrRemark.toString()
-                                  : quantityText,
+                              quantityText,
                               isBoldValue: true),
 
                           // Stok Sebelum dan Sesudah
@@ -1259,13 +1222,8 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
                                     size: 18, color: Colors.blueGrey),
                                 const SizedBox(width: 8),
                                 Text(
-                                  'Stok: $stockTextBefore -> ',
-                                  style: TextStyle(
-                                      fontSize: 14,
-                                      color: Colors.blueGrey[700]),
-                                ),
-                                Text(
-                                  stockTextAfter,
+                                  // KOREKSI TAMPILAN STOK: Jika log update remarks atau remarks log biasa, tampilkan N/A
+                                  'Stok: ${logEntry.quantityOrRemark is String ? 'N/A' : '$stockTextBefore -> $stockTextAfter'}',
                                   style: TextStyle(
                                       fontSize: 15,
                                       color: stockColor,
@@ -1275,9 +1233,10 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
                             ),
                           ),
 
-                          // Remarks Tambahan (jika ada)
+                          // Remarks Tambahan (hanya untuk log stok yang bukan update remarks)
                           if (logEntry.remarks != null &&
-                              logEntry.remarks!.isNotEmpty)
+                              logEntry.remarks!.isNotEmpty &&
+                              !isRemarkAddition) // Jangan tampilkan remarks lagi jika sudah menjadi Keterangan Item
                             Padding(
                               padding: const EdgeInsets.only(top: 8.0),
                               child: _buildLogDetailRow(Icons.info_outline,
@@ -1306,7 +1265,7 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Icon(icon, size: 18, color: Colors.blueGrey),
-          SizedBox(width: 8),
+          const SizedBox(width: 8),
           Expanded(
             child: Text.rich(
               // Penggunaan konstruktor TextSpan dari Flutter
