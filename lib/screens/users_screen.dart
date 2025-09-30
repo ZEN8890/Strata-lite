@@ -1,3 +1,4 @@
+// Path: lib/screens/users_screen.dart
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'dart:developer';
@@ -32,7 +33,6 @@ class _UsersScreenState extends State<UsersScreen> {
   bool _isImportCancelled = false;
 
   String? _selectedDepartmentFilter;
-  // Variabel _selectedRoleFilter dihapus
 
   Timer? _notificationTimer;
   final List<String> _departments = [
@@ -62,7 +62,6 @@ class _UsersScreenState extends State<UsersScreen> {
     super.initState();
     _searchController.addListener(_onSearchChanged);
     _selectedDepartmentFilter = 'Semua Departemen';
-    // Inisialisasi _selectedRoleFilter dihapus
   }
 
   @override
@@ -358,12 +357,10 @@ class _UsersScreenState extends State<UsersScreen> {
                           await _auth.createUserWithEmailAndPassword(
                               email: userEmail, password: newPassword);
 
-                      // --- Penambahan kode untuk mengatasi masalah sesi ---
                       // Masuk kembali sebagai admin setelah membuat pengguna baru
                       await _auth.signInWithEmailAndPassword(
-                          email: currentAdminEmail!,
+                          email: currentAdminEmail,
                           password: currentAdminPassword);
-                      // ---------------------------------------------------
 
                       await _firestore
                           .collection('users')
@@ -517,6 +514,7 @@ class _UsersScreenState extends State<UsersScreen> {
         if (defaultTargetPlatform == TargetPlatform.windows ||
             defaultTargetPlatform == TargetPlatform.macOS ||
             defaultTargetPlatform == TargetPlatform.linux) {
+          // CORRECTED: TargetTargetPlatform -> TargetPlatform
           // Logic for desktop platforms
           final String? resultPath = await FilePicker.platform.saveFile(
             fileName: fileName,
@@ -782,6 +780,7 @@ class _UsersScreenState extends State<UsersScreen> {
         if (defaultTargetPlatform == TargetPlatform.windows ||
             defaultTargetPlatform == TargetPlatform.macOS ||
             defaultTargetPlatform == TargetPlatform.linux) {
+          // CORRECTED: TargetTargetPlatform -> TargetPlatform
           final String? resultPath = await FilePicker.platform.saveFile(
             fileName: fileName,
             type: FileType.custom,
@@ -949,7 +948,6 @@ class _UsersScreenState extends State<UsersScreen> {
       'Semua Departemen',
       ..._departments
     ];
-    // List roleFilterOptions dihapus
 
     return Stack(
       children: [
@@ -1013,52 +1011,11 @@ class _UsersScreenState extends State<UsersScreen> {
                               },
                             ),
                           ),
-                          // Dropdown untuk Filter Role dan SizedBox pemisah telah dihapus
                         ],
                       ),
                     ],
                   ),
                 ),
-              ),
-            ),
-            Padding(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Expanded(
-                    child: Text(
-                      'Daftar Pengguna Terdaftar:',
-                      style:
-                          TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
-                      overflow: TextOverflow.ellipsis,
-                      maxLines: 1,
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  ElevatedButton.icon(
-                    onPressed: _isProcessingFileOperation
-                        ? null
-                        : () => _addEditUser(),
-                    icon: const Icon(Icons.person_add),
-                    label: const Text('Tambah Pengguna'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.blueAccent,
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8)),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  IconButton(
-                    icon: const Icon(Icons.more_vert),
-                    onPressed: _isProcessingFileOperation
-                        ? null
-                        : _showImportExportOptions,
-                    tooltip: 'Opsi Import/Export',
-                  ),
-                ],
               ),
             ),
             Expanded(
@@ -1105,111 +1062,167 @@ class _UsersScreenState extends State<UsersScreen> {
                         department
                             .contains(_selectedDepartmentFilter!.toLowerCase());
 
-                    // Pemeriksaan matchesRole dihapus
-
                     return matchesSearch && matchesDepartment;
                   }).toList();
 
-                  if (filteredUsers.isEmpty &&
+                  final int userCount = filteredUsers.length;
+
+                  if (userCount == 0 &&
                       (_searchQuery.isNotEmpty ||
                           _selectedDepartmentFilter != 'Semua Departemen')) {
                     return const Center(
                         child: Text('Pengguna tidak ditemukan.'));
                   }
-                  if (filteredUsers.isEmpty && _searchQuery.isEmpty) {
+                  if (userCount == 0 && _searchQuery.isEmpty) {
                     return const Center(
                         child: Text('Belum ada pengguna terdaftar.'));
                   }
 
-                  return ListView.builder(
-                    itemCount: filteredUsers.length,
-                    itemBuilder: (context, index) {
-                      final userDoc = filteredUsers[index];
-                      final userData = userDoc.data() as Map<String, dynamic>;
+                  // NEW: Menggabungkan Title/Counter dan tombol aksi
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 16.0, vertical: 8.0),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            // Judul dengan Counter
+                            Expanded(
+                              child: Text(
+                                'Daftar Pengguna Terdaftar (${userCount}):',
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.bold, fontSize: 18),
+                                overflow: TextOverflow.ellipsis,
+                                maxLines: 1,
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            // Tombol Tambah Pengguna (dikecilkan)
+                            ElevatedButton.icon(
+                              onPressed: _isProcessingFileOperation
+                                  ? null
+                                  : () => _addEditUser(),
+                              icon: const Icon(Icons.person_add, size: 18),
+                              label: const Text('Tambah'),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.blueAccent,
+                                foregroundColor: Colors.white,
+                                shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(8)),
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 10, vertical: 10),
+                              ),
+                            ),
+                            // Tombol Opsi Import/Export
+                            IconButton(
+                              icon: const Icon(Icons.more_vert),
+                              onPressed: _isProcessingFileOperation
+                                  ? null
+                                  : _showImportExportOptions,
+                              tooltip: 'Opsi Import/Export',
+                            ),
+                          ],
+                        ),
+                      ),
+                      // List users
+                      Expanded(
+                        child: ListView.builder(
+                          itemCount: filteredUsers.length,
+                          itemBuilder: (context, index) {
+                            final userDoc = filteredUsers[index];
+                            final userData =
+                                userDoc.data() as Map<String, dynamic>;
 
-                      final String name = userData['name'] ?? 'N/A';
-                      final String email = userData['email'] ?? 'N/A';
-                      final String department = userData['department'] ?? 'N/A';
-                      final String role = userData['role'] ?? 'N/A';
+                            final String name = userData['name'] ?? 'N/A';
+                            final String email = userData['email'] ?? 'N/A';
+                            final String department =
+                                userData['department'] ?? 'N/A';
+                            final String role = userData['role'] ?? 'N/A';
 
-                      return Card(
-                        margin: const EdgeInsets.symmetric(
-                            horizontal: 16, vertical: 8),
-                        elevation: 3,
-                        shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(10)),
-                        child: ListTile(
-                          contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 16, vertical: 10),
-                          leading: const CircleAvatar(
-                            backgroundColor: Colors.blueAccent,
-                            child: Icon(Icons.person, color: Colors.white),
-                          ),
-                          title: Text(
-                            name,
-                            style: const TextStyle(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 18,
-                                color: Colors.black87),
-                          ),
-                          subtitle: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const SizedBox(height: 4),
-                              Text('Email: $email',
-                                  style: const TextStyle(fontSize: 14)),
-                              Text('Departemen: $department',
-                                  style: const TextStyle(fontSize: 14)),
-                              Text('Role: ${role.toUpperCase()}',
-                                  style: TextStyle(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w600,
-                                    color: role == 'admin'
-                                        ? Colors.red[700]
-                                        : Colors.blue[700],
-                                  )),
-                            ],
-                          ),
-                          trailing: PopupMenuButton<String>(
-                            onSelected: (String result) {
-                              if (result == 'edit') {
-                                _addEditUser(userToEdit: userDoc);
-                              } else if (result == 'delete') {
-                                _deleteUser(userDoc.id, name);
-                              }
-                            },
-                            itemBuilder: (BuildContext context) =>
-                                <PopupMenuEntry<String>>[
-                              const PopupMenuItem<String>(
-                                value: 'edit',
-                                child: Row(
+                            return Card(
+                              margin: const EdgeInsets.symmetric(
+                                  horizontal: 16, vertical: 8),
+                              elevation: 3,
+                              shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(10)),
+                              child: ListTile(
+                                contentPadding: const EdgeInsets.symmetric(
+                                    horizontal: 16, vertical: 10),
+                                leading: const CircleAvatar(
+                                  backgroundColor: Colors.blueAccent,
+                                  child:
+                                      Icon(Icons.person, color: Colors.white),
+                                ),
+                                title: Text(
+                                  name,
+                                  style: const TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 18,
+                                      color: Colors.black87),
+                                ),
+                                subtitle: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Icon(Icons.edit, color: Colors.blue),
-                                    SizedBox(width: 8),
-                                    Text('Edit Data'),
+                                    const SizedBox(height: 4),
+                                    Text('Email: $email',
+                                        style: const TextStyle(fontSize: 14)),
+                                    Text('Departemen: $department',
+                                        style: const TextStyle(fontSize: 14)),
+                                    Text('Role: ${role.toUpperCase()}',
+                                        style: TextStyle(
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w600,
+                                          color: role == 'admin'
+                                              ? Colors.red[700]
+                                              : Colors.blue[700],
+                                        )),
                                   ],
                                 ),
-                              ),
-                              const PopupMenuItem<String>(
-                                value: 'delete',
-                                child: Row(
-                                  children: [
-                                    Icon(Icons.delete, color: Colors.red),
-                                    SizedBox(width: 8),
-                                    Text('Hapus Pengguna'),
+                                trailing: PopupMenuButton<String>(
+                                  onSelected: (String result) {
+                                    if (result == 'edit') {
+                                      _addEditUser(userToEdit: userDoc);
+                                    } else if (result == 'delete') {
+                                      _deleteUser(userDoc.id, name);
+                                    }
+                                  },
+                                  itemBuilder: (BuildContext context) =>
+                                      <PopupMenuEntry<String>>[
+                                    const PopupMenuItem<String>(
+                                      value: 'edit',
+                                      child: Row(
+                                        children: [
+                                          Icon(Icons.edit, color: Colors.blue),
+                                          SizedBox(width: 8),
+                                          Text('Edit Data'),
+                                        ],
+                                      ),
+                                    ),
+                                    const PopupMenuItem<String>(
+                                      value: 'delete',
+                                      child: Row(
+                                        children: [
+                                          Icon(Icons.delete, color: Colors.red),
+                                          SizedBox(width: 8),
+                                          Text('Hapus Pengguna'),
+                                        ],
+                                      ),
+                                    ),
                                   ],
+                                  icon: const Icon(Icons.more_vert),
+                                  tooltip: 'Opsi Lain',
                                 ),
+                                onTap: () {
+                                  log('Detail user $name diklik');
+                                },
                               ),
-                            ],
-                            icon: const Icon(Icons.more_vert),
-                            tooltip: 'Opsi Lain',
-                          ),
-                          onTap: () {
-                            log('Detail user $name diklik');
+                            );
                           },
                         ),
-                      );
-                    },
+                      )
+                    ],
                   );
                 },
               ),
